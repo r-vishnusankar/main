@@ -71,7 +71,7 @@ export default function RightSidebar({
           const list = raw ? JSON.parse(raw) : [];
           if (cancelled) return;
           const sorted = (list || [])
-            .filter((b: { slides?: unknown[] }) => b.slides?.length > 0)
+            .filter((b: { slides?: unknown[] }) => (b.slides?.length ?? 0) > 0)
             .map((b: { id: string; name?: string; createdAt: string; aspectRatio?: string; slides: Slide[] }) => ({
               id: b.id,
               name: b.name || `Banner ${b.id.slice(-6)}`,
