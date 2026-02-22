@@ -17,6 +17,60 @@ export interface TemplateCategory {
 
 export const TEMPLATE_CATEGORIES: TemplateCategory[] = [
   {
+    id: "ecommerce",
+    title: "E-commerce",
+    templates: [
+      {
+        id: "ec-homepage-hero",
+        name: "Homepage hero banner",
+        aspectRatio: "16:9",
+        promptHint: "E-commerce homepage hero, full-width, clear CTA, product or campaign focus, high conversion style",
+        gradient: "from-blue-500 to-indigo-600",
+        icon: "banner",
+      },
+      {
+        id: "ec-collection-hero",
+        name: "Collection / category hero",
+        aspectRatio: "3:1",
+        promptHint: "E-commerce collection or category hero banner, wide strip, product focus, on-brand style",
+        gradient: "from-indigo-500 to-purple-600",
+        icon: "banner",
+      },
+      {
+        id: "ec-promo-strip",
+        name: "Promo strip / announcement",
+        aspectRatio: "4:1",
+        promptHint: "E-commerce promo strip or announcement banner, sale or offer focus, clear messaging",
+        gradient: "from-rose-500 to-orange-500",
+        icon: "banner",
+      },
+      {
+        id: "ec-product-card",
+        name: "Product card",
+        aspectRatio: "1:1",
+        promptHint: "Product card image, white or neutral background, centered product, clean and consistent lighting for PDP or grid",
+        gradient: "from-slate-400 to-slate-600",
+        icon: "feed",
+      },
+      {
+        id: "ec-plp-thumbnail",
+        name: "PLP thumbnail",
+        aspectRatio: "1:1",
+        promptHint: "Product listing page thumbnail, square, clear product visibility, minimal background, e-commerce PLP style",
+        gradient: "from-emerald-500 to-teal-600",
+        icon: "feed",
+      },
+      {
+        id: "ec-order-confirmation",
+        name: "Order confirmation / Thank you",
+        aspectRatio: "16:9",
+        promptHint: "Order confirmation or thank-you graphic, friendly tone, space for order details, professional and reassuring",
+        gradient: "from-amber-400 to-orange-500",
+        icon: "heart",
+      },
+    ],
+  },
+  {
     id: "instagram",
     title: "Instagram",
     templates: [

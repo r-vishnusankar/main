@@ -1,9 +1,98 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { getAllBanners, openDB } from "@/lib/indexedDB";
+import type { Slide } from "@/types/banner";
 
-export default function RightSidebar() {
+function formatTimeAgo(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const sec = Math.floor((now.getTime() - d.getTime()) / 1000);
+  if (sec < 60) return "Just now";
+  if (sec < 3600) return `${Math.floor(sec / 60)} min ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} hours ago`;
+  if (sec < 604800) return `${Math.floor(sec / 86400)} days ago`;
+  return d.toLocaleDateString();
+}
+
+interface RecentBanner {
+  id: string;
+  name: string;
+  createdAt: string;
+  aspectRatio: string;
+  firstImageUrl: string | null;
+  slides: Slide[];
+}
+
+interface RightSidebarProps {
+  /** Current session slides (created images not yet saved as a banner). */
+  currentSlides?: Slide[];
+  /** When user clicks a saved banner, open it in the editor. */
+  onSelectBanner?: (slides: Slide[], aspectRatio: string) => void;
+  /** When this changes, refetch recent banners. */
+  bannersRefreshTrigger?: number;
+  /** Navigate to Banners tab (e.g. for "Open Banners" from settings). */
+  onOpenBanners?: () => void;
+}
+
+export default function RightSidebar({
+  currentSlides = [],
+  onSelectBanner,
+  bannersRefreshTrigger = 0,
+}: RightSidebarProps) {
   const [showPromo, setShowPromo] = useState(true);
+  const [recentBanners, setRecentBanners] = useState<RecentBanner[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const load = async () => {
+      try {
+        await openDB();
+        const list = await getAllBanners();
+        if (cancelled) return;
+        const sorted = (list || [])
+          .filter((b) => b.slides?.length > 0)
+          .map((b) => ({
+            id: b.id,
+            name: b.name || `Banner ${b.id.slice(-6)}`,
+            createdAt: b.createdAt,
+            aspectRatio: b.aspectRatio || "16:9",
+            firstImageUrl: b.slides[0]?.imageUrl ?? null,
+            slides: b.slides,
+          }))
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 12);
+        setRecentBanners(sorted);
+      } catch {
+        try {
+          const raw = localStorage.getItem("savedBanners");
+          const list = raw ? JSON.parse(raw) : [];
+          if (cancelled) return;
+          const sorted = (list || [])
+            .filter((b: { slides?: unknown[] }) => b.slides?.length > 0)
+            .map((b: { id: string; name?: string; createdAt: string; aspectRatio?: string; slides: Slide[] }) => ({
+              id: b.id,
+              name: b.name || `Banner ${b.id.slice(-6)}`,
+              createdAt: b.createdAt,
+              aspectRatio: b.aspectRatio || "16:9",
+              firstImageUrl: b.slides[0]?.imageUrl ?? null,
+              slides: b.slides,
+            }))
+            .sort((a: RecentBanner, b: RecentBanner) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 12);
+          setRecentBanners(sorted);
+        } catch {
+          if (!cancelled) setRecentBanners([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, [bannersRefreshTrigger]);
 
   return (
     <div className="w-80 bg-[#2a2a2a] border-l border-[#3a3a3a] flex flex-col">
@@ -30,35 +119,62 @@ export default function RightSidebar() {
         </div>
       )}
 
-      <div className="flex-1 px-4 pb-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-sm">Recent Banners</h3>
-          <div className="flex gap-2">
-            <button className="p-1 hover:bg-[#3a3a3a] rounded">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
-            </button>
-            <button className="p-1 hover:bg-[#3a3a3a] rounded">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div className="space-y-2">
-          {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="p-2 bg-[#1a1a1a] rounded-lg border border-[#3a3a3a] hover:border-[#4a4a4a] cursor-pointer transition-colors"
-            >
-              <div className="w-full h-16 bg-[#3a3a3a] rounded mb-2 flex items-center justify-center text-gray-500 text-xs">
-                Banner {i}
-              </div>
-              <p className="text-xs text-gray-400 truncate">banner-{i}.zip</p>
-              <p className="text-xs text-gray-500">2 hours ago</p>
+      <div className="flex-1 px-4 pb-4 overflow-hidden flex flex-col min-h-0">
+        <h3 className="font-semibold text-sm mb-3">Recent Banners</h3>
+
+        {currentSlides.length > 0 && (
+          <div className="mb-3">
+            <p className="text-xs text-gray-500 mb-2">Current session ({currentSlides.length} slide{currentSlides.length !== 1 ? "s" : ""})</p>
+            <div className="flex gap-2 overflow-x-auto pb-2">
+              {currentSlides.map((slide, i) => (
+                <div
+                  key={slide.id}
+                  className="flex-shrink-0 w-20 h-20 rounded-lg border border-[#3a3a3a] overflow-hidden bg-[#1a1a1a]"
+                >
+                  {slide.imageUrl ? (
+                    <img
+                      src={slide.imageUrl}
+                      alt={`Slide ${i + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">Slide {i + 1}</div>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+        )}
+
+        <div className="space-y-2 overflow-y-auto flex-1 min-h-0">
+          {loading ? (
+            <p className="text-xs text-gray-500">Loading…</p>
+          ) : recentBanners.length === 0 ? (
+            <p className="text-xs text-gray-500">No saved banners yet. Generate or save a banner to see it here.</p>
+          ) : (
+            recentBanners.map((banner) => (
+              <button
+                key={banner.id}
+                type="button"
+                onClick={() => onSelectBanner?.(banner.slides, banner.aspectRatio)}
+                className="w-full p-2 bg-[#1a1a1a] rounded-lg border border-[#3a3a3a] hover:border-[#4a4a4a] cursor-pointer transition-colors text-left"
+              >
+                <div className="w-full h-16 rounded mb-2 overflow-hidden bg-[#3a3a3a] flex items-center justify-center">
+                  {banner.firstImageUrl ? (
+                    <img
+                      src={banner.firstImageUrl}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-gray-500 text-xs">No preview</span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-300 truncate font-medium">{banner.name}</p>
+                <p className="text-xs text-gray-500">{formatTimeAgo(banner.createdAt)}</p>
+              </button>
+            ))
+          )}
         </div>
       </div>
     </div>

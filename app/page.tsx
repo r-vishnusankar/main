@@ -11,8 +11,13 @@ import RightSidebar from "@/components/RightSidebar";
 import TemplateGallery from "@/components/TemplateGallery";
 import HomeView from "@/components/HomeView";
 import BannersView from "@/components/BannersView";
+import GalleryView from "@/components/GalleryView";
 import HelpView from "@/components/HelpView";
+import OnboardingBanner from "@/components/OnboardingBanner";
 import type { Slide, AspectRatio } from "@/types/banner";
+import { resizeDataUrlToAspect, resizeDataUrlToMaxDimension } from "@/lib/resizeToAspect";
+import { type ImagePurpose, IMAGE_PURPOSE_OPTIONS, IMAGE_PURPOSE_ASPECT_RATIO } from "@/lib/imagePurpose";
+import type { Celebration } from "@/lib/calendar";
 
 const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
   { value: "16:9", label: "16:9" },
@@ -32,12 +37,16 @@ export default function EditorPage() {
   const [suggestedPrompt, setSuggestedPrompt] = useState<string | undefined>(undefined);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [createWorkflow, setCreateWorkflow] = useState<"generate" | "product">("generate");
+  const [selectedCreatePurpose, setSelectedCreatePurpose] = useState<ImagePurpose | null>("homepage_banner");
   const [bannersRefreshTrigger, setBannersRefreshTrigger] = useState(0);
+  const [selectedEvent, setSelectedEvent] = useState<Celebration | null>(null);
 
-  const addSlide = (slide: Slide) => {
+  const addSlide = (slide: Slide, source?: "upload" | "generate") => {
     setSlides((prev) => [...prev, slide]);
-    setActiveTab("editor");
-    setActiveNav("create"); // Switch to create tab when adding slides
+    setActiveNav("create");
+    if (source === "upload") {
+      setActiveTab("editor");
+    }
   };
 
   const handleSelectBanner = (bannerSlides: Slide[], bannerAspectRatio: string) => {
@@ -45,6 +54,13 @@ export default function EditorPage() {
     setAspectRatio(bannerAspectRatio as AspectRatio);
     setActiveTab("editor");
     setActiveNav("create");
+  };
+
+  const handleSelectForEdit = (slide: Slide, aspectRatio: AspectRatio) => {
+    setSlides([slide]);
+    setAspectRatio(aspectRatio);
+    setActiveNav("create");
+    setActiveTab("editor");
   };
 
   const handleSelectAsset = (imageUrl: string) => {
@@ -82,6 +98,86 @@ export default function EditorPage() {
     );
   };
 
+  const augmentPromptWithEvent = (prompt: string): string => {
+    if (!selectedEvent?.name?.trim()) return prompt;
+    return `Festive ${selectedEvent.name} theme: ${prompt}`;
+  };
+
+  /** Get base64 + mime from a slide image URL for use as reference in image-to-image generation. Resizes to max 1024px to avoid API failures. */
+  const getImageBase64FromUrl = async (imageUrl: string): Promise<{ imageBase64: string; imageMimeType: string } | null> => {
+    if (!imageUrl?.trim()) return null;
+    let dataUrl: string | null = null;
+    if (imageUrl.startsWith("data:")) {
+      dataUrl = imageUrl;
+    } else if (imageUrl.startsWith("blob:")) {
+      try {
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
+        dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+      } catch {
+        return null;
+      }
+    }
+    if (!dataUrl) return null;
+    try {
+      const resized = await resizeDataUrlToMaxDimension(dataUrl);
+      const match = resized.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) return { imageMimeType: match[1], imageBase64: match[2] };
+    } catch {
+      const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) return { imageMimeType: match[1], imageBase64: match[2] };
+    }
+    return null;
+  };
+
+  const handleRegenerateSlide = async (index: number, prompt: string, aspectRatio: AspectRatio) => {
+    const promptTrimmed = prompt.trim();
+    const slide = slides[index];
+    const referenceImage = slide?.imageUrl ? await getImageBase64FromUrl(slide.imageUrl) : null;
+    const aspectSuffix = ` Generate the image in ${aspectRatio} aspect ratio.`;
+    // With reference image: put main prompt first, append event as style hint (works better with image-to-image)
+    // Without reference image: use event-augmented prompt as before
+    let promptWithEvent: string;
+    if (referenceImage) {
+      promptWithEvent = selectedEvent?.name?.trim()
+        ? `${promptTrimmed}.${aspectSuffix} Style: festive for ${selectedEvent.name}.`
+        : `${promptTrimmed}.${aspectSuffix}`;
+    } else {
+      promptWithEvent = `${augmentPromptWithEvent(promptTrimmed)}.${aspectSuffix}`;
+    }
+    const body: { prompt: string; imageBase64?: string; imageMimeType?: string; aspectRatio?: AspectRatio } = { prompt: promptWithEvent, aspectRatio };
+    if (referenceImage) {
+      body.imageBase64 = referenceImage.imageBase64;
+      body.imageMimeType = referenceImage.imageMimeType;
+    }
+    const res = await fetch("/api/generate-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error ?? "Failed to generate image");
+    let imageUrl = data.imageUrl;
+    if (!imageUrl) throw new Error("No image in response");
+    if (!imageUrl.startsWith("data:")) {
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      imageUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+    }
+    const resizedImageUrl = await resizeDataUrlToAspect(imageUrl, aspectRatio);
+    updateSlide(index, { imageUrl: resizedImageUrl, prompt: promptTrimmed });
+  };
+
   return (
     <div className="h-screen flex flex-col bg-[#1a1a1a] text-white overflow-hidden">
       <TopNav />
@@ -97,6 +193,48 @@ export default function EditorPage() {
               onSelectBanner={handleSelectBanner}
               onSelectAsset={handleSelectAsset}
             />
+          )}
+
+          {activeNav === "gallery" && (
+            <GalleryView
+              onSelectForEdit={handleSelectForEdit}
+              refreshTrigger={bannersRefreshTrigger}
+            />
+          )}
+
+          {activeNav === "product-banner" && (
+            <div className="p-8 max-w-6xl mx-auto">
+              <h1 className="text-4xl font-bold mb-2">Banner from product image</h1>
+              <p className="text-gray-400 mb-8">Choose a template, add your product image, and describe the banner. After creating, you&apos;ll go to the editor.</p>
+              <div className="mb-8">
+                <h2 className="text-lg font-semibold text-white mb-3">1. Choose a template</h2>
+                <TemplateGallery
+                  selectedTemplateId={selectedTemplateId}
+                  onSelectTemplate={(templateId, ratio, promptHint) => {
+                    setSelectedTemplateId(templateId);
+                    setAspectRatio(ratio);
+                    setSuggestedPrompt(promptHint);
+                  }}
+                />
+              </div>
+              <div className="p-6 bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-xl border border-[#3a3a3a]">
+                <h2 className="text-lg font-semibold text-white mb-4">2. Add product image and instructions</h2>
+                <p className="text-sm text-gray-400 mb-1">
+                  Upload your product image and describe how the banner should look. The template&apos;s suggested style is pre-filled—edit as needed.
+                </p>
+                <p className="text-xs text-gray-500 mb-4">Creating at <span className="text-gray-400 font-medium">{aspectRatio}</span> aspect ratio</p>
+                <ImageSourcePanel
+                  aspectRatio={aspectRatio}
+                  onAddSlide={(slide) => {
+                    setSlides((prev) => [...prev, slide]);
+                    setActiveNav("create");
+                    setActiveTab("editor");
+                  }}
+                  suggestedPrompt={suggestedPrompt}
+                  workflow="product"
+                />
+              </div>
+            </div>
           )}
 
           {activeNav === "templates" && (
@@ -123,53 +261,57 @@ export default function EditorPage() {
             <div className="p-8 max-w-6xl mx-auto">
               <h1 className="text-4xl font-bold mb-6">Create something new</h1>
 
-              {/* Workflow selector */}
-              <div className="flex gap-4 mb-8">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCreateWorkflow("generate");
-                    setSuggestedPrompt(undefined);
-                    setSelectedTemplateId(null);
-                  }}
-                  className={`flex-1 max-w-xs px-6 py-4 rounded-xl border text-left transition-colors ${
-                    createWorkflow === "generate"
-                      ? "bg-[#0066ff]/10 border-[#0066ff] text-white"
-                      : "bg-[#2a2a2a] border-[#3a3a3a] text-gray-300 hover:border-[#4a4a4a]"
-                  }`}
-                >
-                  <span className="block text-2xl mb-1">✨</span>
-                  <span className="font-semibold block">Generate image</span>
-                  <span className="text-sm text-gray-400 mt-0.5">
-                    Describe what you want and generate a banner image with AI
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreateWorkflow("product")}
-                  className={`flex-1 max-w-xs px-6 py-4 rounded-xl border text-left transition-colors ${
-                    createWorkflow === "product"
-                      ? "bg-[#0066ff]/10 border-[#0066ff] text-white"
-                      : "bg-[#2a2a2a] border-[#3a3a3a] text-gray-300 hover:border-[#4a4a4a]"
-                  }`}
-                >
-                  <span className="block text-2xl mb-1">🖼️</span>
-                  <span className="font-semibold block">Banner from product</span>
-                  <span className="text-sm text-gray-400 mt-0.5">
-                    Pick a template, add your product image, and describe the banner
-                  </span>
-                </button>
+              <OnboardingBanner />
+
+              {/* What do you want to create? */}
+              <p className="text-gray-400 mb-1">What do you want to create?</p>
+              <p className="text-xs text-gray-500 mb-4">Pick a purpose to get a pre-filled prompt you can edit. Use the Product banner option in the left sidebar to create from a template and your product photo.</p>
+              <div className="flex flex-wrap gap-3 mb-8">
+                {IMAGE_PURPOSE_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => {
+                      setCreateWorkflow("generate");
+                      setSelectedCreatePurpose(opt.value);
+                      setSuggestedPrompt(undefined);
+                      setSelectedTemplateId(null);
+                      setAspectRatio(IMAGE_PURPOSE_ASPECT_RATIO[opt.value] as AspectRatio);
+                    }}
+                    className={`px-5 py-3 rounded-xl border text-left transition-colors ${
+                      createWorkflow === "generate" && selectedCreatePurpose === opt.value
+                        ? "bg-[#0066ff]/10 border-[#0066ff] text-white"
+                        : "bg-[#2a2a2a] border-[#3a3a3a] text-gray-300 hover:border-[#4a4a4a]"
+                    }`}
+                  >
+                    <span className="font-semibold">{opt.label}</span>
+                  </button>
+                ))}
               </div>
 
-              {createWorkflow === "generate" ? (
-                <div className="mb-8 p-6 bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-xl border border-[#3a3a3a]">
+              <div className="mb-8 p-6 bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-xl border border-[#3a3a3a]">
+                  {selectedEvent && (
+                    <div className="flex items-center justify-between gap-2 mb-4 p-2 rounded-lg bg-[#0066ff]/10 border border-[#0066ff]/30">
+                      <span className="text-sm text-gray-300">Using event: {selectedEvent.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedEvent(null)}
+                        className="py-1 px-2 rounded text-xs font-medium text-[#0066ff] hover:bg-[#0066ff]/20"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
                   <h2 className="text-lg font-semibold text-white mb-4">Generate from prompt</h2>
+                  <p className="text-sm text-gray-400 mb-4">Choose a purpose above, edit the prompt below, then click Generate. Or upload an image—you&apos;ll go straight to the Banner Editor to add prompts per slide.</p>
                   <ImageSourcePanel
                     aspectRatio={aspectRatio}
                     onAddSlide={addSlide}
                     suggestedPrompt={suggestedPrompt}
                     workflow="generate"
-                    onSaveBanner={async (bannerSlides, bannerAspectRatio) => {
+                    initialImagePurpose={selectedCreatePurpose ?? undefined}
+                    selectedEvent={selectedEvent}
+                    onSaveBanner={async (bannerSlides, bannerAspectRatio, imagePurpose) => {
                       // Save banner automatically when image is generated
                       try {
                         const { saveBanner, openDB } = await import("@/lib/indexedDB");
@@ -181,6 +323,7 @@ export default function EditorPage() {
                           aspectRatio: bannerAspectRatio,
                           createdAt: new Date().toISOString(),
                           name: `Generated: ${new Date().toLocaleDateString()}`,
+                          ...(imagePurpose && { imagePurpose }),
                         };
                         
                         if (useIndexedDB) {
@@ -199,33 +342,6 @@ export default function EditorPage() {
                     }}
                   />
                 </div>
-              ) : (
-                <>
-                  <div className="mb-6">
-                    <h2 className="text-lg font-semibold text-white mb-3">1. Choose a template</h2>
-                    <TemplateGallery
-                      selectedTemplateId={selectedTemplateId}
-                      onSelectTemplate={(templateId, ratio, promptHint) => {
-                        setSelectedTemplateId(templateId);
-                        setAspectRatio(ratio);
-                        setSuggestedPrompt(promptHint);
-                      }}
-                    />
-                  </div>
-                  <div className="mb-8 p-6 bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-xl border border-[#3a3a3a]">
-                    <h2 className="text-lg font-semibold text-white mb-4">2. Add product image and instructions</h2>
-                    <p className="text-sm text-gray-400 mb-4">
-                      Upload your product image and describe how the banner should look. The template&apos;s suggested style is pre-filled—edit as needed.
-                    </p>
-                    <ImageSourcePanel
-                      aspectRatio={aspectRatio}
-                      onAddSlide={addSlide}
-                      suggestedPrompt={suggestedPrompt}
-                      workflow="product"
-                    />
-                  </div>
-                </>
-              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div className="p-6 bg-[#2a2a2a] rounded-xl border border-[#3a3a3a] hover:border-[#4a4a4a] transition-colors">
@@ -239,6 +355,8 @@ export default function EditorPage() {
                   <CalendarPanel
                     onAddSlide={addSlide}
                     productName={productName}
+                    selectedEvent={selectedEvent}
+                    onSelectEvent={setSelectedEvent}
                   />
                 </div>
 
@@ -248,6 +366,28 @@ export default function EditorPage() {
                     <h3 className="text-xl font-semibold">Settings</h3>
                   </div>
                   <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm text-gray-400 mb-2">Default purpose</label>
+                      <select
+                        value={selectedCreatePurpose ?? "homepage_banner"}
+                        onChange={(e) => {
+                          const v = e.target.value as ImagePurpose | "";
+                          setSelectedCreatePurpose(v || "homepage_banner");
+                          if (v) {
+                            setAspectRatio(IMAGE_PURPOSE_ASPECT_RATIO[v] as AspectRatio);
+                            setSuggestedPrompt(undefined);
+                          }
+                        }}
+                        className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white focus:outline-none focus:border-[#0066ff]"
+                      >
+                        {IMAGE_PURPOSE_OPTIONS.map((opt) => (
+                          <option key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">Pre-fills the prompt when you generate.</p>
+                    </div>
                     <div>
                       <label className="block text-sm text-gray-400 mb-2">Product name</label>
                       <input
@@ -296,6 +436,27 @@ export default function EditorPage() {
                         </label>
                       )}
                     </div>
+                    <div className="pt-2 border-t border-[#3a3a3a] space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => setActiveNav("banners")}
+                        className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-sm text-gray-300 hover:bg-[#3a3a3a] hover:text-white transition-colors"
+                      >
+                        📁 Open Banners
+                      </button>
+                      {slides.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSlides([]);
+                            setActiveTab("create");
+                          }}
+                          className="w-full px-4 py-2 bg-[#1a1a1a] border border-red-500/40 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                        >
+                          Clear current slides
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -322,13 +483,37 @@ export default function EditorPage() {
                     </p>
                   )}
                 </div>
-                <button
-                  onClick={() => setActiveTab("create")}
-                  className="px-4 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg hover:bg-[#3a3a3a] transition-colors"
-                >
-                  ← Back to Create
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setActiveTab("create");
+                      setCreateWorkflow("generate");
+                    }}
+                    className="px-4 py-2 bg-gradient-to-r from-[#0066ff] to-[#0052cc] text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
+                  >
+                    ✨ Add slide from AI
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("create")}
+                    className="px-4 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg hover:bg-[#3a3a3a] transition-colors"
+                  >
+                    ← Back to Create
+                  </button>
+                </div>
               </div>
+
+              {selectedEvent && (
+                <div className="flex items-center justify-between gap-2 mb-4 p-2 rounded-lg bg-[#0066ff]/10 border border-[#0066ff]/30">
+                  <span className="text-sm text-gray-300">Using event: {selectedEvent.name} — Generate image will include this event in the prompt.</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEvent(null)}
+                    className="py-1 px-2 rounded text-xs font-medium text-[#0066ff] hover:bg-[#0066ff]/20"
+                  >
+                    Clear
+                  </button>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
@@ -336,15 +521,14 @@ export default function EditorPage() {
                     {slides.length > 0 && (
                       <div className="mb-4 p-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg">
                         <p className="text-sm text-gray-400">
-                          💡 <strong>Tip:</strong> All images in these slides are saved in{" "}
+                          💡 <strong>Tip:</strong> Uploaded and generated images both add slides here. All are saved in{" "}
                           <button
                             onClick={() => setActiveNav("banners")}
                             className="text-[#0066ff] hover:underline"
                           >
                             Assets
                           </button>
-                          {". "}
-                          {createWorkflow === "generate" && "Generated images are also saved as banners."}
+                          . Use &quot;Add slide from AI&quot; above to generate another image, or go back to Create to upload more.
                         </p>
                       </div>
                     )}
@@ -356,6 +540,7 @@ export default function EditorPage() {
                       onRemoveSlide={removeSlide}
                       onReorderSlides={reorderSlides}
                       onUpdateSlide={updateSlide}
+                      onRegenerateSlide={handleRegenerateSlide}
                       editable
                     />
                   </div>
@@ -379,7 +564,11 @@ export default function EditorPage() {
           )}
         </main>
 
-        <RightSidebar />
+        <RightSidebar
+          currentSlides={slides}
+          onSelectBanner={handleSelectBanner}
+          bannersRefreshTrigger={bannersRefreshTrigger}
+        />
       </div>
     </div>
   );

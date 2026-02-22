@@ -1,4 +1,6 @@
 // IndexedDB utility for storing large assets
+import type { ImagePurpose } from "@/lib/imagePurpose";
+
 const DB_NAME = "BannerCreatorDB";
 const DB_VERSION = 1;
 const ASSETS_STORE = "assets";
@@ -41,7 +43,19 @@ export async function openDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function saveAsset(asset: { id: string; imageUrl: string; name: string; uploadedAt: string }): Promise<void> {
+export interface StoredAssetRecord {
+  id: string;
+  imageUrl: string;
+  name: string;
+  uploadedAt: string;
+  imagePurpose?: ImagePurpose;
+  /** Prompt used to create the image (for gallery and rework). */
+  prompt?: string;
+  /** Aspect ratio used (e.g. "16:9") for gallery and rework. */
+  aspectRatio?: string;
+}
+
+export async function saveAsset(asset: StoredAssetRecord): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([ASSETS_STORE], "readwrite");
@@ -53,7 +67,7 @@ export async function saveAsset(asset: { id: string; imageUrl: string; name: str
   });
 }
 
-export async function getAllAssets(): Promise<Array<{ id: string; imageUrl: string; name: string; uploadedAt: string }>> {
+export async function getAllAssets(): Promise<StoredAssetRecord[]> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([ASSETS_STORE], "readonly");
@@ -77,7 +91,16 @@ export async function deleteAsset(id: string): Promise<void> {
   });
 }
 
-export async function saveBanner(banner: { id: string; slides: any[]; aspectRatio: string; createdAt: string; name?: string }): Promise<void> {
+export interface StoredBannerRecord {
+  id: string;
+  slides: any[];
+  aspectRatio: string;
+  createdAt: string;
+  name?: string;
+  imagePurpose?: ImagePurpose;
+}
+
+export async function saveBanner(banner: StoredBannerRecord): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([BANNERS_STORE], "readwrite");
@@ -89,7 +112,7 @@ export async function saveBanner(banner: { id: string; slides: any[]; aspectRati
   });
 }
 
-export async function getAllBanners(): Promise<Array<{ id: string; slides: any[]; aspectRatio: string; createdAt: string; name?: string }>> {
+export async function getAllBanners(): Promise<StoredBannerRecord[]> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction([BANNERS_STORE], "readonly");

@@ -7,6 +7,8 @@ export interface Slide {
   productName?: string;
   productLink?: string;
   caption?: string;
+  /** Prompt used or to use for AI generation (shown in editor, used for regenerate). */
+  prompt?: string;
 }
 
 export interface BannerConfig {

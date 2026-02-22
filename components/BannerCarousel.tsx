@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import type { Slide, AspectRatio } from "@/types/banner";
+import { IMAGE_PURPOSE_OPTIONS, IMAGE_PURPOSE_PROMPTS, IMAGE_PURPOSE_ASPECT_RATIO, type ImagePurpose } from "@/lib/imagePurpose";
 
 const RATIO_MAP: Record<AspectRatio, number> = {
   "16:9": 16 / 9,
@@ -19,6 +20,8 @@ interface BannerCarouselProps {
   onRemoveSlide?: (index: number) => void;
   onReorderSlides?: (fromIndex: number, toIndex: number) => void;
   onUpdateSlide?: (index: number, updates: Partial<Slide>) => void;
+  /** Called when user clicks "Generate image" for a slide; parent should call API, resize to aspectRatio, then update slide. */
+  onRegenerateSlide?: (index: number, prompt: string, aspectRatio: AspectRatio) => Promise<void>;
 }
 
 export default function BannerCarousel({
@@ -30,8 +33,11 @@ export default function BannerCarousel({
   onRemoveSlide,
   onReorderSlides,
   onUpdateSlide,
+  onRegenerateSlide,
 }: BannerCarouselProps) {
   const [current, setCurrent] = useState(0);
+  const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
   const ratio = RATIO_MAP[aspectRatio];
 
   const goTo = useCallback(
@@ -47,6 +53,8 @@ export default function BannerCarousel({
     const t = setInterval(() => goTo(current + 1), autoplaySpeed * 1000);
     return () => clearInterval(t);
   }, [autoplay, autoplaySpeed, slides.length, current, goTo]);
+
+  useEffect(() => setRegenerateError(null), [current]);
 
   if (slides.length === 0) {
     return (
@@ -153,27 +161,59 @@ export default function BannerCarousel({
                 className="w-16 h-16 object-cover rounded-lg flex-shrink-0"
               />
               <div className="flex-1 min-w-0 space-y-2">
-                <input
-                  type="text"
-                  placeholder="Product name"
-                  value={slide.productName ?? ""}
-                  onChange={(e) => onUpdateSlide(index, { productName: e.target.value })}
-                  className="w-full text-sm rounded-lg border border-[#3a3a3a] bg-[#1a1a1a] text-white placeholder-gray-500 px-3 py-1.5 focus:outline-none focus:border-[#0066ff]"
-                />
-                <input
-                  type="text"
-                  placeholder="Product link (optional)"
-                  value={slide.productLink ?? ""}
-                  onChange={(e) => onUpdateSlide(index, { productLink: e.target.value })}
-                  className="w-full text-sm rounded-lg border border-[#3a3a3a] bg-[#1a1a1a] text-white placeholder-gray-500 px-3 py-1.5 focus:outline-none focus:border-[#0066ff]"
-                />
-                <input
-                  type="text"
-                  placeholder="Caption (optional)"
-                  value={slide.caption ?? ""}
-                  onChange={(e) => onUpdateSlide(index, { caption: e.target.value })}
-                  className="w-full text-sm rounded-lg border border-[#3a3a3a] bg-[#1a1a1a] text-white placeholder-gray-500 px-3 py-1.5 focus:outline-none focus:border-[#0066ff]"
-                />
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Predefined prompt (editable)</label>
+                  <select
+                    className="w-full text-sm rounded-lg border border-[#3a3a3a] bg-[#1a1a1a] text-white px-3 py-1.5 focus:outline-none focus:border-[#0066ff] mb-1"
+                    value={slide.prompt ? (IMAGE_PURPOSE_OPTIONS.find((o) => IMAGE_PURPOSE_PROMPTS[o.value] === slide.prompt)?.value ?? "") : ""}
+                    onChange={(e) => {
+                      const v = e.target.value as ImagePurpose | "";
+                      if (v) onUpdateSlide(index, { prompt: IMAGE_PURPOSE_PROMPTS[v] });
+                    }}
+                  >
+                    <option value="">Choose a preset…</option>
+                    {IMAGE_PURPOSE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label} ({IMAGE_PURPOSE_ASPECT_RATIO[opt.value]})
+                      </option>
+                    ))}
+                  </select>
+                  <textarea
+                    placeholder="Or type your own prompt for this slide…"
+                    value={slide.prompt ?? ""}
+                    onChange={(e) => onUpdateSlide(index, { prompt: e.target.value })}
+                    rows={2}
+                    className="w-full text-sm rounded-lg border border-[#3a3a3a] bg-[#1a1a1a] text-white placeholder-gray-500 px-3 py-1.5 focus:outline-none focus:border-[#0066ff] resize-y min-h-[60px]"
+                  />
+                </div>
+                {onRegenerateSlide && (
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1.5">Image is generated from the prompt above (and from this slide&apos;s image as reference when present), then resized to <strong className="text-gray-400">{aspectRatio}</strong>.</p>
+                    {regenerateError && current === index && (
+                      <p className="text-sm text-amber-400 mb-2 rounded-lg bg-amber-500/10 px-2 py-1.5 border border-amber-500/30">{regenerateError}</p>
+                    )}
+                    <button
+                    type="button"
+                    onClick={async () => {
+                      const promptToUse = (slide.prompt ?? "").trim() || IMAGE_PURPOSE_PROMPTS.homepage_banner;
+                      setRegeneratingIndex(index);
+                      setRegenerateError(null);
+                      try {
+                        await onRegenerateSlide(index, promptToUse, aspectRatio);
+                      } catch (err) {
+                        setRegenerateError(err instanceof Error ? err.message : "Generation failed. Try a simpler prompt or different image.");
+                      } finally {
+                        setRegeneratingIndex(null);
+                      }
+                    }}
+                    disabled={regeneratingIndex !== null}
+                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-[#0066ff] to-[#0052cc] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity flex items-center gap-2"
+                  >
+                    <span>{regeneratingIndex === index ? "⏳" : "✨"}</span>
+                    <span>{regeneratingIndex === index ? "Generating…" : "Generate image"}</span>
+                  </button>
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-1">
                 {index > 0 && (

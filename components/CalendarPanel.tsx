@@ -3,8 +3,11 @@
 import { useState, useEffect } from "react";
 import {
   getCelebrationsForDate,
+  getCelebrationsForMonth,
+  getUpcomingCelebrations,
   getRegionFromLocale,
   REGIONS,
+  UPCOMING_DAYS,
   type RegionCode,
   type Celebration,
 } from "@/lib/calendar";
@@ -18,6 +21,8 @@ function generateId(): string {
 interface CalendarPanelProps {
   onAddSlide: (slide: Slide) => void;
   productName: string;
+  selectedEvent: Celebration | null;
+  onSelectEvent: (event: Celebration | null) => void;
 }
 
 const MONTHS = [
@@ -25,12 +30,13 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
-export default function CalendarPanel({ onAddSlide, productName }: CalendarPanelProps) {
+export default function CalendarPanel({ onAddSlide, productName, selectedEvent, onSelectEvent }: CalendarPanelProps) {
   const [region, setRegion] = useState<RegionCode>("in");
   const [year, setYear] = useState(() => new Date().getFullYear());
   const [month, setMonth] = useState(() => new Date().getMonth());
   const [selectedDate, setSelectedDate] = useState<{ month: number; day: number } | null>(null);
   const [celebrations, setCelebrations] = useState<Celebration[]>([]);
+  const [upcoming, setUpcoming] = useState<Celebration[]>([]);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,8 +64,13 @@ export default function CalendarPanel({ onAddSlide, productName }: CalendarPanel
     setCelebrations(list);
   }, [region, selectedDate]);
 
+  useEffect(() => {
+    setUpcoming(getUpcomingCelebrations(region, new Date(), UPCOMING_DAYS));
+  }, [region]);
+
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
+  const monthEvents = getCelebrationsForMonth(region, month);
 
   const handleCreateBanner = async (celebrationName: string) => {
     const product = productName.trim() || "your product";
@@ -137,8 +148,105 @@ export default function CalendarPanel({ onAddSlide, productName }: CalendarPanel
     month === today.getMonth() &&
     day === today.getDate();
 
+  const formatEventDate = (dateKey: string) => {
+    const [mm, dd] = dateKey.split("-").map(Number);
+    return `${MONTHS[mm - 1]} ${dd}`;
+  };
+
+  const isEventSelected = (c: Celebration) =>
+    selectedEvent?.name === c.name && selectedEvent?.date === c.date;
+
   return (
     <div className="space-y-4">
+      {selectedEvent && (
+        <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-[#0066ff]/10 border border-[#0066ff]/30">
+          <span className="text-sm text-gray-300 truncate">Using event: {selectedEvent.name}</span>
+          <button
+            type="button"
+            onClick={() => onSelectEvent(null)}
+            className="py-1 px-2 rounded text-xs font-medium text-[#0066ff] hover:bg-[#0066ff]/20 flex-shrink-0"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+      {upcoming.length > 0 && (
+        <div>
+          <p className="text-sm font-medium text-gray-300 mb-2">Upcoming events (next 6 months)</p>
+          <ul className="space-y-1.5 max-h-32 overflow-y-auto">
+            {upcoming.map((c) => (
+              <li
+                key={c.date + c.name}
+                className={`flex items-center justify-between gap-2 text-sm ${isEventSelected(c) ? "rounded bg-[#0066ff]/10 px-2 py-1" : ""}`}
+              >
+                <span className="text-gray-300 truncate">{c.name}</span>
+                <span className="text-gray-500 text-xs flex-shrink-0">{formatEventDate(c.date)}</span>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onSelectEvent({ name: c.name, date: c.date })}
+                    className={`py-1 px-2 rounded text-xs font-medium hover:opacity-90 flex-shrink-0 ${
+                      isEventSelected(c)
+                        ? "bg-[#0066ff] text-white"
+                        : "bg-[#3a3a3a] text-gray-300 hover:bg-[#4a4a4a]"
+                    }`}
+                  >
+                    Select
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCreateBanner(c.name)}
+                    disabled={generating}
+                    className="py-1 px-2 rounded bg-[#0066ff] text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+                  >
+                    Create
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {monthEvents.length > 0 && (
+        <div>
+          <p className="text-sm font-medium text-gray-300 mb-2">Events in {MONTHS[month]} {year}</p>
+          <ul className="space-y-1.5 max-h-32 overflow-y-auto">
+            {monthEvents.map((c) => (
+              <li
+                key={c.date + c.name}
+                className={`flex items-center justify-between gap-2 text-sm ${isEventSelected(c) ? "rounded bg-[#0066ff]/10 px-2 py-1" : ""}`}
+              >
+                <span className="text-gray-300 truncate">{c.name}</span>
+                <span className="text-gray-500 text-xs flex-shrink-0">{formatEventDate(c.date)}</span>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onSelectEvent({ name: c.name, date: c.date })}
+                    className={`py-1 px-2 rounded text-xs font-medium hover:opacity-90 flex-shrink-0 ${
+                      isEventSelected(c)
+                        ? "bg-[#0066ff] text-white"
+                        : "bg-[#3a3a3a] text-gray-300 hover:bg-[#4a4a4a]"
+                    }`}
+                  >
+                    Select
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCreateBanner(c.name)}
+                    disabled={generating}
+                    className="py-1 px-2 rounded bg-[#0066ff] text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 flex-shrink-0"
+                  >
+                    Create
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {monthEvents.length === 0 && (
+        <p className="text-xs text-gray-500">No events in {MONTHS[month]} for {region === "in" ? "India" : "United States"}.</p>
+      )}
       <div>
         <label className="block text-xs text-gray-400 mb-2">Region</label>
         <select
@@ -193,18 +301,20 @@ export default function CalendarPanel({ onAddSlide, productName }: CalendarPanel
           const selected =
             selectedDate?.month === month &&
             selectedDate?.day === day;
+          const hasEvent = getCelebrationsForDate(region, month + 1, day).length > 0;
           return (
             <button
               key={day}
               type="button"
               onClick={() => setSelectedDate({ month, day })}
-              className={`py-1.5 rounded text-sm transition-colors ${
+              className={`py-1.5 rounded text-sm transition-colors flex flex-col items-center gap-0.5 ${
                 selected
                   ? "bg-[#0066ff] text-white"
                   : "text-gray-300 hover:bg-[#3a3a3a]"
               } ${isToday(day) ? "ring-2 ring-[#0066ff]" : ""}`}
             >
-              {day}
+              <span>{day}</span>
+              {hasEvent && <span className={`w-1 h-1 rounded-full ${selected ? "bg-white" : "bg-[#0066ff]"}`} />}
             </button>
           );
         })}
@@ -217,16 +327,32 @@ export default function CalendarPanel({ onAddSlide, productName }: CalendarPanel
           </p>
           <ul className="space-y-2">
             {celebrations.map((c) => (
-              <li key={c.date + c.name} className="flex items-center justify-between gap-2">
+              <li
+                key={c.date + c.name}
+                className={`flex items-center justify-between gap-2 ${isEventSelected(c) ? "rounded bg-[#0066ff]/10 px-2 py-1" : ""}`}
+              >
                 <span className="text-sm text-gray-300">{c.name}</span>
-                <button
-                  type="button"
-                  onClick={() => handleCreateBanner(c.name)}
-                  disabled={generating}
-                  className="py-1.5 px-3 rounded bg-gradient-to-r from-[#0066ff] to-[#0052cc] text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
-                >
-                  {generating ? "Generating…" : "Create"}
-                </button>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => onSelectEvent({ name: c.name, date: c.date })}
+                    className={`py-1.5 px-2 rounded text-xs font-medium hover:opacity-90 flex-shrink-0 ${
+                      isEventSelected(c)
+                        ? "bg-[#0066ff] text-white"
+                        : "bg-[#3a3a3a] text-gray-300 hover:bg-[#4a4a4a]"
+                    }`}
+                  >
+                    Select
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleCreateBanner(c.name)}
+                    disabled={generating}
+                    className="py-1.5 px-3 rounded bg-gradient-to-r from-[#0066ff] to-[#0052cc] text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    {generating ? "Generating…" : "Create"}
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

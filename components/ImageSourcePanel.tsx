@@ -2,8 +2,13 @@
 
 import { useState, useRef, useEffect } from "react";
 import type { Slide, AspectRatio } from "@/types/banner";
-import { resizeImageToAspect, getAspectRatioNumber } from "@/lib/resizeToAspect";
+import { resizeImageToAspect, getAspectRatioNumber, resizeDataUrlToAspect, resizeDataUrlToMaxDimension } from "@/lib/resizeToAspect";
 import { saveAsset, openDB } from "@/lib/indexedDB";
+import {
+  type ImagePurpose,
+  IMAGE_PURPOSE_OPTIONS,
+  IMAGE_PURPOSE_PROMPTS,
+} from "@/lib/imagePurpose";
 
 function generateId(): string {
   return `slide-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -27,20 +32,31 @@ export type CreateWorkflow = "generate" | "product";
 
 interface ImageSourcePanelProps {
   aspectRatio: AspectRatio;
-  onAddSlide: (slide: Slide) => void;
+  /** When source is "upload", the page may e.g. switch to the editor tab. */
+  onAddSlide: (slide: Slide, source?: "upload" | "generate") => void;
   suggestedPrompt?: string;
   /** When set, shows only that workflow (no mode dropdown). */
   workflow?: CreateWorkflow;
   /** Callback when a banner should be saved (for workflow 1 - generate image) */
-  onSaveBanner?: (slides: Slide[], aspectRatio: AspectRatio) => void;
+  onSaveBanner?: (slides: Slide[], aspectRatio: AspectRatio, imagePurpose?: ImagePurpose) => void;
+  /** When set, initializes purpose dropdown and prompt to this value (e.g. from "What to create?" card). */
+  initialImagePurpose?: ImagePurpose;
+  /** When set, the event name is included in the prompt when generating (event-themed image). */
+  selectedEvent?: { name: string; date: string } | null;
 }
 
-export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPrompt, workflow, onSaveBanner }: ImageSourcePanelProps) {
-  const [prompt, setPrompt] = useState(suggestedPrompt ?? "");
+const DEFAULT_PURPOSE: ImagePurpose = "homepage_banner";
+
+export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPrompt, workflow, onSaveBanner, initialImagePurpose, selectedEvent }: ImageSourcePanelProps) {
+  const [prompt, setPrompt] = useState(
+    () => suggestedPrompt ?? (workflow === "generate" ? IMAGE_PURPOSE_PROMPTS[initialImagePurpose ?? DEFAULT_PURPOSE] : "")
+  );
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const ratioNum = getAspectRatioNumber(aspectRatio);
+
+  const [imagePurpose, setImagePurpose] = useState<ImagePurpose>(initialImagePurpose ?? DEFAULT_PURPOSE);
 
   const [productFile, setProductFile] = useState<File | null>(null);
   const [productPreviewUrl, setProductPreviewUrl] = useState<string | null>(null);
@@ -65,6 +81,21 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
       setBannerInstructions(suggestedPrompt);
     }
   }, [suggestedPrompt]);
+
+  // When workflow is generate, pre-fill prompt from purpose preset when purpose changes
+  useEffect(() => {
+    if (workflow === "generate") {
+      setPrompt(IMAGE_PURPOSE_PROMPTS[imagePurpose]);
+    }
+  }, [workflow, imagePurpose]);
+
+  // Sync to initialImagePurpose when parent passes it (e.g. "What to create?" card clicked)
+  useEffect(() => {
+    if (workflow === "generate" && initialImagePurpose !== undefined) {
+      setImagePurpose(initialImagePurpose);
+      setPrompt(IMAGE_PURPOSE_PROMPTS[initialImagePurpose]);
+    }
+  }, [workflow, initialImagePurpose]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -107,11 +138,14 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
         console.warn("Failed to save uploaded image to assets:", err);
       }
 
-      onAddSlide({
-        id: generateId(),
-        imageUrl: url,
-        imageBlob: blob,
-      });
+      onAddSlide(
+        {
+          id: generateId(),
+          imageUrl: url,
+          imageBlob: blob,
+        },
+        "upload"
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     }
@@ -126,11 +160,15 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
     }
     setError(null);
     setGenerating(true);
+    const promptWithEvent = selectedEvent?.name?.trim()
+      ? `Festive ${selectedEvent.name} theme: ${trimmed}`
+      : trimmed;
+    const promptToSend = `${promptWithEvent}. Generate the image in ${aspectRatio} aspect ratio.`;
     try {
       const res = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: trimmed }),
+        body: JSON.stringify({ prompt: promptToSend }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to generate image");
@@ -153,7 +191,11 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
         }
       }
 
-      // Save to assets automatically
+      // Resize to selected aspect ratio so the slide matches the banner
+      imageUrl = await resizeDataUrlToAspect(imageUrl, aspectRatio);
+
+      // Save to assets automatically (include imagePurpose when in generate workflow)
+      const purposeToSave = workflow === "generate" ? imagePurpose : undefined;
       try {
         const useIndexedDB = await openDB().then(() => true).catch(() => false);
         if (useIndexedDB) {
@@ -162,6 +204,9 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             imageUrl,
             name: `Generated: ${trimmed.substring(0, 30)}${trimmed.length > 30 ? "..." : ""}`,
             uploadedAt: new Date().toISOString(),
+            ...(purposeToSave && { imagePurpose: purposeToSave }),
+            prompt: trimmed || undefined,
+            aspectRatio,
           });
         } else {
           // Fallback to localStorage
@@ -172,6 +217,9 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             imageUrl,
             name: `Generated: ${trimmed.substring(0, 30)}${trimmed.length > 30 ? "..." : ""}`,
             uploadedAt: new Date().toISOString(),
+            ...(purposeToSave && { imagePurpose: purposeToSave }),
+            prompt: trimmed || undefined,
+            aspectRatio,
           });
           localStorage.setItem("savedAssets", JSON.stringify(assets.slice(-50))); // Keep last 50
         }
@@ -182,13 +230,14 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
       const slide: Slide = {
         id: generateId(),
         imageUrl,
+        prompt: trimmed || undefined,
       };
       
       onAddSlide(slide);
       
       // For workflow 1 (generate image), automatically save as banner
       if (workflow === "generate" && onSaveBanner) {
-        onSaveBanner([slide], aspectRatio);
+        onSaveBanner([slide], aspectRatio, purposeToSave);
       }
       
       setPrompt("");
@@ -219,20 +268,33 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
     setError(null);
     setCreatingBanner(true);
     try {
-      const { base64, mimeType } = await fileToBase64(productFile);
+      let { base64, mimeType } = await fileToBase64(productFile);
+      const dataUrl = `data:${mimeType};base64,${base64}`;
+      const resizedUrl = await resizeDataUrlToMaxDimension(dataUrl);
+      const resizedMatch = resizedUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (resizedMatch) {
+        base64 = resizedMatch[2];
+        mimeType = resizedMatch[1];
+      }
+      const promptToSend = `Create a single banner or marketing image based on this product image. Style and layout: ${trimmed}. Generate the image in ${aspectRatio} aspect ratio. Output only the generated image.`;
       const res = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          prompt: trimmed,
+          prompt: promptToSend,
           imageBase64: base64,
           imageMimeType: mimeType,
+          aspectRatio,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create banner");
       let imageUrl = data.imageUrl;
       if (!imageUrl) throw new Error("No image in response");
+      if (data.textOnlyFallback) {
+        setError("Note: Generated from prompt only (product image could not be used).");
+        setTimeout(() => setError(null), 6000);
+      }
 
       // Convert remote URL to base64 for storage
       if (!imageUrl.startsWith("data:")) {
@@ -250,6 +312,9 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
         }
       }
 
+      // Resize to selected template aspect ratio so the banner matches the chosen template
+      imageUrl = await resizeDataUrlToAspect(imageUrl, aspectRatio);
+
       // Save to assets automatically
       try {
         const useIndexedDB = await openDB().then(() => true).catch(() => false);
@@ -259,6 +324,8 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             imageUrl,
             name: `Banner: ${trimmed.substring(0, 30)}${trimmed.length > 30 ? "..." : ""}`,
             uploadedAt: new Date().toISOString(),
+            prompt: trimmed || undefined,
+            aspectRatio,
           });
         } else {
           // Fallback to localStorage
@@ -269,6 +336,8 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             imageUrl,
             name: `Banner: ${trimmed.substring(0, 30)}${trimmed.length > 30 ? "..." : ""}`,
             uploadedAt: new Date().toISOString(),
+            prompt: trimmed || undefined,
+            aspectRatio,
           });
           localStorage.setItem("savedAssets", JSON.stringify(assets.slice(-50))); // Keep last 50
         }
@@ -276,7 +345,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
         console.warn("Failed to save banner image to assets:", err);
       }
 
-      onAddSlide({ id: generateId(), imageUrl });
+      onAddSlide({ id: generateId(), imageUrl, prompt: trimmed || undefined });
       setBannerInstructions("");
       setProductFile(null);
     } catch (err) {
@@ -303,6 +372,26 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
           )}
           {effectiveMode === "text" ? (
             <>
+              {workflow === "generate" && selectedEvent?.name && (
+                <span className="px-2 text-xs text-gray-500 flex-shrink-0" title="Event will be included in the prompt">
+                  Event: {selectedEvent.name}
+                </span>
+              )}
+              {/* Only show purpose dropdown when not controlled by parent (e.g. BannersView); on Create page purpose is set by "What do you want to create?" cards to avoid duplicate */}
+              {workflow === "generate" && initialImagePurpose === undefined && (
+                <select
+                  value={imagePurpose}
+                  onChange={(e) => setImagePurpose(e.target.value as ImagePurpose)}
+                  className="px-4 py-4 bg-[#1a1a1a] border-r border-[#3a3a3a] text-white text-sm focus:outline-none cursor-pointer"
+                  title="Image for"
+                >
+                  {IMAGE_PURPOSE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              )}
               <input
                 type="text"
                 value={prompt}
@@ -339,11 +428,13 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
                   {productFile ? productFile.name : "Choose product image"}
                 </label>
                 {productPreviewUrl && (
-                  <img
-                    src={productPreviewUrl}
-                    alt="Product"
-                    className="h-16 object-contain px-4 py-2"
-                  />
+                  <div className="px-4 py-2 flex justify-center bg-[#0d0d0d] rounded-lg border border-[#3a3a3a]">
+                    <img
+                      src={productPreviewUrl}
+                      alt="Product preview"
+                      className="max-h-48 w-auto max-w-full object-contain"
+                    />
+                  </div>
                 )}
                 <input
                   type="text"

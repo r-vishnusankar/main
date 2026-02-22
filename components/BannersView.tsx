@@ -14,6 +14,12 @@ import {
   getStorageUsage,
 } from "@/lib/indexedDB";
 import ImageViewer from "@/components/ImageViewer";
+import {
+  type ImagePurpose,
+  IMAGE_PURPOSE_OPTIONS,
+  IMAGE_PURPOSE_PROMPTS,
+  getPurposeLabel,
+} from "@/lib/imagePurpose";
 
 interface StoredBanner {
   id: string;
@@ -21,6 +27,7 @@ interface StoredBanner {
   aspectRatio: string;
   createdAt: string;
   name?: string;
+  imagePurpose?: ImagePurpose;
 }
 
 interface StoredAsset {
@@ -29,6 +36,7 @@ interface StoredAsset {
   name: string;
   uploadedAt: string;
   file?: File;
+  imagePurpose?: ImagePurpose;
 }
 
 interface BannersViewProps {
@@ -42,11 +50,14 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
   const [assets, setAssets] = useState<StoredAsset[]>([]);
   const [activeTab, setActiveTab] = useState<"banners" | "assets">("banners");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [generatePrompt, setGeneratePrompt] = useState("");
+  const [generateImagePurpose, setGenerateImagePurpose] = useState<ImagePurpose>("homepage_banner");
+  const [generatePrompt, setGeneratePrompt] = useState(IMAGE_PURPOSE_PROMPTS.homepage_banner);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [selectedReferenceImage, setSelectedReferenceImage] = useState<StoredAsset | null>(null);
   const [numVariations, setNumVariations] = useState<1 | 2 | 3>(1);
+  const [assetsFilterPurpose, setAssetsFilterPurpose] = useState<ImagePurpose | "all">("all");
+  const [bannersFilterPurpose, setBannersFilterPurpose] = useState<ImagePurpose | "all">("all");
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -146,6 +157,19 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
 
     loadData();
   }, [refreshTrigger]); // Reload when refreshTrigger changes
+
+  useEffect(() => {
+    setGeneratePrompt(IMAGE_PURPOSE_PROMPTS[generateImagePurpose]);
+  }, [generateImagePurpose]);
+
+  const filteredBanners =
+    bannersFilterPurpose === "all"
+      ? banners
+      : banners.filter((b) => b.imagePurpose === bannersFilterPurpose);
+  const filteredAssets =
+    assetsFilterPurpose === "all"
+      ? assets
+      : assets.filter((a) => a.imagePurpose === assetsFilterPurpose);
 
   // Compress image to reduce size
   const compressImage = (file: File, maxWidth: number = 1920, maxHeight: number = 1920, quality: number = 0.8): Promise<File> => {
@@ -462,6 +486,7 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
           imageUrl: finalImageUrl,
           name: `Variation ${i + 1}: ${trimmed.substring(0, 25)}${trimmed.length > 25 ? "..." : ""}`,
           uploadedAt: new Date().toISOString(),
+          imagePurpose: generateImagePurpose,
         });
       }
 
@@ -484,14 +509,14 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
             const usage = await getStorageUsage();
             setStorageInfo(usage);
           } else {
-            // Fallback to localStorage
+            // Fallback to localStorage (strip file, keep imagePurpose)
             localStorage.setItem(
               "savedAssets",
               JSON.stringify(assetsToSave.map(({ file, ...rest }) => rest))
             );
             setAssets(assetsToSave);
           }
-          
+
           if (updatedAssets.length > maxAssets) {
             setGenerateError(`Storage limit reached. Only the latest ${maxAssets} assets are kept.`);
           }
@@ -577,8 +602,24 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
             </p>
           </div>
           ) : (
+            <>
+              <div className="mb-4 flex items-center gap-2">
+                <label className="text-xs text-gray-400 whitespace-nowrap">Filter by purpose:</label>
+                <select
+                  value={bannersFilterPurpose}
+                  onChange={(e) => setBannersFilterPurpose(e.target.value as ImagePurpose | "all")}
+                  className="px-3 py-1.5 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white text-sm focus:outline-none focus:border-[#0066ff]"
+                >
+                  <option value="all">All</option>
+                  {IMAGE_PURPOSE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {banners.map((banner) => (
+              {filteredBanners.map((banner) => (
                 <div
                   key={banner.id}
                   className="bg-[#2a2a2a] rounded-xl border border-[#3a3a3a] overflow-hidden hover:border-[#4a4a4a] transition-colors"
@@ -610,7 +651,14 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
                     </div>
                   )}
                   <div className="p-4">
-                    <h3 className="font-semibold mb-1">{banner.name || "Untitled Banner"}</h3>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <h3 className="font-semibold">{banner.name || "Untitled Banner"}</h3>
+                      {banner.imagePurpose && (
+                        <span className="px-2 py-0.5 rounded text-xs bg-[#0066ff]/20 text-[#0066ff]">
+                          {getPurposeLabel(banner.imagePurpose)}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-400 mb-2">
                       {banner.slides.length} {banner.slides.length === 1 ? "slide" : "slides"} • {banner.aspectRatio}
                     </p>
@@ -632,6 +680,7 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
                 </div>
               ))}
             </div>
+            </>
           )}
         </div>
       ) : (
@@ -645,9 +694,25 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
                 <span>✨</span> Generate Variations with AI
               </h3>
               
-              {/* Step 1: Select Reference Image */}
+              {/* Step 1: Choose image purpose */}
               <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-2">Step 1: Select a reference image</label>
+                <label className="block text-xs text-gray-400 mb-2">Step 1: Choose image purpose</label>
+                <select
+                  value={generateImagePurpose}
+                  onChange={(e) => setGenerateImagePurpose(e.target.value as ImagePurpose)}
+                  className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white text-sm focus:outline-none focus:border-[#0066ff]"
+                >
+                  {IMAGE_PURPOSE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Step 2: Select Reference Image */}
+              <div className="mb-4">
+                <label className="block text-xs text-gray-400 mb-2">Step 2: Select a reference image</label>
                 {selectedReferenceImage ? (
                   <div className="flex items-center gap-3 p-3 bg-[#1a1a1a] border border-[#0066ff] rounded-lg">
                     <div className="w-16 h-16 bg-[#2a2a2a] rounded overflow-hidden flex-shrink-0">
@@ -685,11 +750,11 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
                 )}
               </div>
 
-              {/* Step 2: Enter Prompt */}
+              {/* Step 3: Enter Prompt (pre-filled from purpose, editable) */}
               {selectedReferenceImage && (
                 <>
                   <div className="mb-4">
-                    <label className="block text-xs text-gray-400 mb-2">Step 2: Enter your prompt</label>
+                    <label className="block text-xs text-gray-400 mb-2">Step 3: Enter your prompt (editable)</label>
                     <input
                       type="text"
                       value={generatePrompt}
@@ -701,9 +766,9 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
                     />
                   </div>
 
-                  {/* Step 3: Select Number of Variations */}
+                  {/* Step 4: Select Number of Variations */}
                   <div className="mb-4">
-                    <label className="block text-xs text-gray-400 mb-2">Step 3: How many variations?</label>
+                    <label className="block text-xs text-gray-400 mb-2">Step 4: How many variations?</label>
                     <div className="flex gap-2">
                       {[1, 2, 3].map((num) => (
                         <button
@@ -834,8 +899,24 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
               </button>
             </div>
           ) : (
+            <>
+              <div className="mb-4 flex items-center gap-2">
+                <label className="text-xs text-gray-400 whitespace-nowrap">Filter by purpose:</label>
+                <select
+                  value={assetsFilterPurpose}
+                  onChange={(e) => setAssetsFilterPurpose(e.target.value as ImagePurpose | "all")}
+                  className="px-3 py-1.5 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white text-sm focus:outline-none focus:border-[#0066ff]"
+                >
+                  <option value="all">All</option>
+                  {IMAGE_PURPOSE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {assets.map((asset) => (
+              {filteredAssets.map((asset) => (
                 <div
                   key={asset.id}
                   className={`bg-[#2a2a2a] rounded-xl border overflow-hidden transition-colors group cursor-pointer ${
@@ -898,6 +979,13 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
                         <span className="text-white text-xs">✓</span>
                       </div>
                     )}
+                    {asset.imagePurpose && (
+                      <div className="absolute bottom-2 left-2 right-2">
+                        <span className="inline-block px-2 py-0.5 rounded text-xs bg-black/60 text-white truncate max-w-full">
+                          {getPurposeLabel(asset.imagePurpose)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   <div className="p-3">
                     <p className="text-sm font-medium truncate mb-1">{asset.name}</p>
@@ -925,6 +1013,7 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
                 </div>
               ))}
             </div>
+            </>
           )}
         </div>
       )}

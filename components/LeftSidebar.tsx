@@ -1,6 +1,6 @@
 "use client";
 
-export type NavItemId = "home" | "create" | "banners" | "templates" | "help";
+export type NavItemId = "home" | "create" | "product-banner" | "banners" | "gallery" | "templates" | "help";
 
 interface NavItem {
   id: NavItemId;
@@ -11,7 +11,9 @@ interface NavItem {
 const navItems: NavItem[] = [
   { id: "home", label: "Home", icon: "🏠" },
   { id: "create", label: "Create", icon: "➕" },
+  { id: "product-banner", label: "Product banner", icon: "🖼️" },
   { id: "banners", label: "Banners", icon: "📁" },
+  { id: "gallery", label: "Gallery", icon: "📷" },
   { id: "templates", label: "Templates", icon: "🎨" },
   { id: "help", label: "Help", icon: "❓" },
 ];

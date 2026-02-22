@@ -24,6 +24,15 @@ export default function ExportPanel({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [useIndexedDB, setUseIndexedDB] = useState(false);
+  const [exportPreset, setExportPreset] = useState<string>("general");
+
+  const EXPORT_PRESETS: { value: string; label: string }[] = [
+    { value: "general", label: "General" },
+    { value: "homepage-hero", label: "Homepage hero (16:9)" },
+    { value: "product-card", label: "Product card (1:1)" },
+    { value: "plp-thumbnail", label: "PLP thumbnail (1:1)" },
+    { value: "order-confirmation", label: "Order confirmation (16:9)" },
+  ];
 
   useEffect(() => {
     // Check if IndexedDB is available
@@ -87,7 +96,8 @@ export default function ExportPanel({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "banner-carousel.zip";
+      const presetName = exportPreset === "general" ? "banner-carousel" : `${exportPreset}-banner`;
+      a.download = `${presetName}.zip`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
@@ -120,6 +130,18 @@ export default function ExportPanel({
           <p className="text-sm text-gray-400 mb-2">
             Export your banner as a ZIP with <code className="text-xs bg-[#1a1a1a] px-1.5 py-0.5 rounded">index.html</code>, <code className="text-xs bg-[#1a1a1a] px-1.5 py-0.5 rounded">images/</code>, and <code className="text-xs bg-[#1a1a1a] px-1.5 py-0.5 rounded">banner-config.json</code>. Use the HTML file on any website.
           </p>
+          <div className="mb-2">
+            <label className="block text-xs text-gray-500 mb-1">E-commerce export preset (filename)</label>
+            <select
+              value={exportPreset}
+              onChange={(e) => setExportPreset(e.target.value)}
+              className="w-full px-3 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white text-sm focus:outline-none focus:border-[#0066ff]"
+            >
+              {EXPORT_PRESETS.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+          </div>
           <button
             type="button"
             onClick={handleDownload}
