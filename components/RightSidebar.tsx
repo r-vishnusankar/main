@@ -29,6 +29,8 @@ interface RightSidebarProps {
   currentSlides?: Slide[];
   /** When user clicks a saved banner, open it in the editor. */
   onSelectBanner?: (slides: Slide[], aspectRatio: string) => void;
+  /** Open editor with a copy of the banner (new slide ids). Optional. */
+  onUseAsTemplate?: (slides: Slide[], aspectRatio: string) => void;
   /** When this changes, refetch recent banners. */
   bannersRefreshTrigger?: number;
   /** Navigate to Banners tab (e.g. for "Open Banners" from settings). */
@@ -38,6 +40,7 @@ interface RightSidebarProps {
 export default function RightSidebar({
   currentSlides = [],
   onSelectBanner,
+  onUseAsTemplate,
   bannersRefreshTrigger = 0,
 }: RightSidebarProps) {
   const [showPromo, setShowPromo] = useState(true);
@@ -153,26 +156,49 @@ export default function RightSidebar({
             <p className="text-xs text-gray-500">No saved banners yet. Generate or save a banner to see it here.</p>
           ) : (
             recentBanners.map((banner) => (
-              <button
+              <div
                 key={banner.id}
-                type="button"
-                onClick={() => onSelectBanner?.(banner.slides, banner.aspectRatio)}
-                className="w-full p-2 bg-[#1a1a1a] rounded-lg border border-[#3a3a3a] hover:border-[#4a4a4a] cursor-pointer transition-colors text-left"
+                className="w-full p-2 bg-[#1a1a1a] rounded-lg border border-[#3a3a3a] hover:border-[#4a4a4a] transition-colors"
               >
-                <div className="w-full h-16 rounded mb-2 overflow-hidden bg-[#3a3a3a] flex items-center justify-center">
-                  {banner.firstImageUrl ? (
-                    <img
-                      src={banner.firstImageUrl}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <span className="text-gray-500 text-xs">No preview</span>
+                <button
+                  type="button"
+                  onClick={() => onSelectBanner?.(banner.slides, banner.aspectRatio)}
+                  className="w-full text-left"
+                >
+                  <div className="w-full h-16 rounded mb-2 overflow-hidden bg-[#3a3a3a] flex items-center justify-center">
+                    {banner.firstImageUrl ? (
+                      <img
+                        src={banner.firstImageUrl}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-gray-500 text-xs">No preview</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-300 truncate font-medium">{banner.name}</p>
+                  <p className="text-xs text-gray-500">{formatTimeAgo(banner.createdAt)}</p>
+                </button>
+                <div className="flex gap-1 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => onSelectBanner?.(banner.slides, banner.aspectRatio)}
+                    className="flex-1 px-2 py-1 text-xs bg-[#0066ff] text-white rounded hover:bg-[#0052cc]"
+                  >
+                    Open
+                  </button>
+                  {onUseAsTemplate && (
+                    <button
+                      type="button"
+                      onClick={() => onUseAsTemplate(banner.slides, banner.aspectRatio)}
+                      className="flex-1 px-2 py-1 text-xs bg-[#3a3a3a] text-gray-300 rounded hover:bg-[#4a4a4a]"
+                      title="Use as template"
+                    >
+                      Template
+                    </button>
                   )}
                 </div>
-                <p className="text-xs text-gray-300 truncate font-medium">{banner.name}</p>
-                <p className="text-xs text-gray-500">{formatTimeAgo(banner.createdAt)}</p>
-              </button>
+              </div>
             ))
           )}
         </div>

@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { getAllAssets, getAllBanners, openDB } from "@/lib/indexedDB";
 import type { Slide, AspectRatio } from "@/types/banner";
 import type { StoredAssetRecord, StoredBannerRecord } from "@/lib/indexedDB";
+import { getFavoriteIds, toggleFavorite } from "@/lib/favorites";
 
 export interface GalleryItem {
   id: string;
@@ -21,15 +22,24 @@ function generateId(): string {
 
 interface GalleryViewProps {
   onSelectForEdit: (slide: Slide, aspectRatio: AspectRatio) => void;
+  /** Add this slide to the carousel and open editor (Duplicate). Optional. */
+  onAddToEditor?: (slide: Slide, aspectRatio: AspectRatio) => void;
   refreshTrigger?: number;
 }
 
 const VALID_ASPECT_RATIOS: AspectRatio[] = ["16:9", "3:1", "4:1", "1:1"];
 
-export default function GalleryView({ onSelectForEdit, refreshTrigger = 0 }: GalleryViewProps) {
+export default function GalleryView({ onSelectForEdit, onAddToEditor, refreshTrigger = 0 }: GalleryViewProps) {
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewItem, setViewItem] = useState<GalleryItem | null>(null);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    setFavoriteIds(new Set(getFavoriteIds()));
+  }, [refreshTrigger]);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,10 +117,13 @@ export default function GalleryView({ onSelectForEdit, refreshTrigger = 0 }: Gal
     return () => { cancelled = true; };
   }, [refreshTrigger]);
 
-  const handleSelect = (item: GalleryItem) => {
-    const aspectRatio: AspectRatio = item.aspectRatio && VALID_ASPECT_RATIOS.includes(item.aspectRatio as AspectRatio)
+  const getAspectRatio = (item: GalleryItem): AspectRatio =>
+    item.aspectRatio && VALID_ASPECT_RATIOS.includes(item.aspectRatio as AspectRatio)
       ? (item.aspectRatio as AspectRatio)
       : "16:9";
+
+  const handleSelect = (item: GalleryItem) => {
+    const aspectRatio = getAspectRatio(item);
     const slide: Slide = {
       id: generateId(),
       imageUrl: item.imageUrl,
@@ -118,6 +131,30 @@ export default function GalleryView({ onSelectForEdit, refreshTrigger = 0 }: Gal
     };
     onSelectForEdit(slide, aspectRatio);
   };
+
+  const handleDuplicate = (item: GalleryItem, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onAddToEditor) return;
+    const aspectRatio = getAspectRatio(item);
+    const slide: Slide = {
+      id: generateId(),
+      imageUrl: item.imageUrl,
+      prompt: item.prompt ?? undefined,
+    };
+    onAddToEditor(slide, aspectRatio);
+  };
+
+  const handleToggleFavorite = (itemId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    toggleFavorite(itemId);
+    setFavoriteIds(new Set(getFavoriteIds()));
+  };
+
+  const displayItems = (showFavoritesOnly ? items.filter((i) => favoriteIds.has(i.id)) : items).filter(
+    (i) =>
+      !searchQuery.trim() ||
+      [i.title, i.prompt].some((t) => t && String(t).toLowerCase().includes(searchQuery.trim().toLowerCase()))
+  );
 
   if (loading) {
     return (
@@ -136,12 +173,55 @@ export default function GalleryView({ onSelectForEdit, refreshTrigger = 0 }: Gal
     );
   }
 
+  if (displayItems.length === 0 && (showFavoritesOnly || searchQuery.trim())) {
+    return (
+      <div className="p-8 max-w-6xl mx-auto">
+        <h1 className="text-3xl font-bold text-white mb-2">Gallery</h1>
+        <div className="flex flex-wrap items-center gap-4 mb-6">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by name or prompt…"
+            className="flex-1 min-w-[180px] px-3 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#0066ff]"
+          />
+          <button type="button" onClick={() => setShowFavoritesOnly(false)} className={`px-3 py-1.5 rounded-lg text-sm ${!showFavoritesOnly ? "bg-[#0066ff] text-white" : "bg-[#2a2a2a] text-gray-400 hover:text-white"}`}>All</button>
+          <button type="button" onClick={() => setShowFavoritesOnly(true)} className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 ${showFavoritesOnly ? "bg-[#0066ff] text-white" : "bg-[#2a2a2a] text-gray-400 hover:text-white"}`}><span>★</span> Favorites</button>
+        </div>
+        <p className="text-gray-400">{showFavoritesOnly && !searchQuery.trim() ? "No favorites yet. Click the star on any image to add it to Favorites." : "No results. Try changing search or filters."}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8 max-w-6xl mx-auto">
       <h1 className="text-3xl font-bold text-white mb-2">Gallery</h1>
-      <p className="text-gray-400 mb-6">View images in a popup or open in the editor to rework.</p>
+      <p className="text-gray-400 mb-4">View images in a popup or open in the editor to rework.</p>
+      <div className="flex flex-wrap items-center gap-4 mb-6">
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search by name or prompt…"
+          className="flex-1 min-w-[180px] px-3 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#0066ff]"
+        />
+        <button
+          type="button"
+          onClick={() => setShowFavoritesOnly(false)}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium ${!showFavoritesOnly ? "bg-[#0066ff] text-white" : "bg-[#2a2a2a] text-gray-400 hover:text-white"}`}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowFavoritesOnly(true)}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 ${showFavoritesOnly ? "bg-[#0066ff] text-white" : "bg-[#2a2a2a] text-gray-400 hover:text-white"}`}
+        >
+          <span>★</span> Favorites
+        </button>
+      </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {items.map((item) => (
+        {displayItems.map((item) => (
           <div
             key={item.id}
             className="rounded-xl border border-[#3a3a3a] bg-[#2a2a2a] overflow-hidden hover:border-[#4a4a4a] transition-all flex flex-col group"
@@ -152,7 +232,7 @@ export default function GalleryView({ onSelectForEdit, refreshTrigger = 0 }: Gal
                 alt={item.title}
                 className="w-full h-full object-contain"
               />
-              <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); setViewItem(item); }}
@@ -172,6 +252,28 @@ export default function GalleryView({ onSelectForEdit, refreshTrigger = 0 }: Gal
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+                {onAddToEditor && (
+                  <button
+                    type="button"
+                    onClick={(e) => handleDuplicate(item, e)}
+                    className="p-2.5 rounded-full bg-[#3a3a3a] hover:bg-[#4a4a4a] text-white transition-colors"
+                    title="Duplicate (add to editor)"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h2m8 0h2a2 2 0 012 2v2m0 8v2a2 2 0 01-2 2h-2m-8 0H6a2 2 0 01-2-2v-8a2 2 0 012-2h2" />
+                    </svg>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => handleToggleFavorite(item.id, e)}
+                  className={`p-2.5 rounded-full transition-colors ${favoriteIds.has(item.id) ? "bg-amber-500/90 text-white" : "bg-[#3a3a3a] text-gray-400 hover:bg-[#4a4a4a] hover:text-amber-400"}`}
+                  title={favoriteIds.has(item.id) ? "Unfavorite" : "Favorite"}
+                >
+                  <svg className="w-5 h-5" fill={favoriteIds.has(item.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
                   </svg>
                 </button>
               </div>

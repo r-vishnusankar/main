@@ -22,6 +22,8 @@ import {
   getPurposeLabel,
 } from "@/lib/imagePurpose";
 import { buildImageToImagePrompt } from "@/lib/imagePrompt";
+import { getBrandPromptSuffix } from "@/lib/brandKit";
+import { getFavoriteIds, toggleFavorite } from "@/lib/favorites";
 
 interface StoredBanner {
   id: string;
@@ -30,6 +32,7 @@ interface StoredBanner {
   createdAt: string;
   name?: string;
   imagePurpose?: ImagePurpose;
+  reminderDate?: string;
 }
 
 interface StoredAsset {
@@ -43,11 +46,13 @@ interface StoredAsset {
 
 interface BannersViewProps {
   onSelectBanner: (slides: Slide[], aspectRatio: string) => void;
+  /** Open editor with a copy of the banner (new slide ids). Optional. */
+  onUseAsTemplate?: (slides: Slide[], aspectRatio: string) => void;
   onSelectAsset: (imageUrl: string) => void;
   refreshTrigger?: number; // When this changes, reload banners
 }
 
-export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrigger }: BannersViewProps) {
+export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectAsset, refreshTrigger }: BannersViewProps) {
   const [banners, setBanners] = useState<StoredBanner[]>([]);
   const [assets, setAssets] = useState<StoredAsset[]>([]);
   const [activeTab, setActiveTab] = useState<"banners" | "assets">("banners");
@@ -66,6 +71,15 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
   const [storageInfo, setStorageInfo] = useState<{ used: number; quota: number } | null>(null);
   const [useIndexedDB, setUseIndexedDB] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [bannersSearchQuery, setBannersSearchQuery] = useState("");
+  const [assetsSearchQuery, setAssetsSearchQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    setFavoriteIds(new Set(getFavoriteIds()));
+  }, [refreshTrigger]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -164,14 +178,27 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
     setGeneratePrompt(IMAGE_PURPOSE_PROMPTS[generateImagePurpose]);
   }, [generateImagePurpose]);
 
-  const filteredBanners =
+  const qB = bannersSearchQuery.trim().toLowerCase();
+  const qA = assetsSearchQuery.trim().toLowerCase();
+  const filteredBanners = (
     bannersFilterPurpose === "all"
       ? banners
-      : banners.filter((b) => b.imagePurpose === bannersFilterPurpose);
-  const filteredAssets =
+      : banners.filter((b) => b.imagePurpose === bannersFilterPurpose)
+  )
+    .filter((b) => !showFavoritesOnly || favoriteIds.has(b.id))
+    .filter((b) => !qB || (b.name || "").toLowerCase().includes(qB) || (b.slides?.some((s) => (s as { prompt?: string }).prompt?.toLowerCase().includes(qB)) ?? false));
+  const filteredAssets = (
     assetsFilterPurpose === "all"
       ? assets
-      : assets.filter((a) => a.imagePurpose === assetsFilterPurpose);
+      : assets.filter((a) => a.imagePurpose === assetsFilterPurpose)
+  )
+    .filter((a) => !showFavoritesOnly || favoriteIds.has(a.id))
+    .filter((a) => !qA || (a.name || "").toLowerCase().includes(qA));
+
+  const handleToggleFavorite = (id: string) => {
+    toggleFavorite(id);
+    setFavoriteIds(new Set(getFavoriteIds()));
+  };
 
   // Compress image to reduce size
   const compressImage = (file: File, maxWidth: number = 1920, maxHeight: number = 1920, quality: number = 0.8): Promise<File> => {
@@ -440,7 +467,9 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
       const generatedImages: StoredAsset[] = [];
       
       const aspectRatio = IMAGE_PURPOSE_ASPECT_RATIO[generateImagePurpose];
-      const promptToSend = buildImageToImagePrompt(trimmed, aspectRatio);
+      const promptToSend = buildImageToImagePrompt(trimmed, aspectRatio, {
+        brandPromptSuffix: getBrandPromptSuffix().trim() || undefined,
+      });
       for (let i = 0; i < numVariations; i++) {
         const res = await fetch("/api/generate-image", {
           method: "POST",
@@ -579,6 +608,15 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
 
           {activeTab === "banners" ? (
         <div>
+          {(() => {
+            const today = new Date().toISOString().slice(0, 10);
+            const scheduledToday = banners.filter((b) => b.reminderDate === today);
+            return scheduledToday.length > 0 ? (
+              <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg text-amber-200 text-sm">
+                📅 Scheduled for today: {scheduledToday.map((b) => b.name || "Banner").join(", ")}
+              </div>
+            ) : null;
+          })()}
           {banners.length === 0 ? (
             <div className="p-12 bg-[#2a2a2a] rounded-xl border border-[#3a3a3a] text-center">
             <span className="text-5xl mb-4 block">📁</span>
@@ -592,8 +630,15 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
           </div>
           ) : (
             <>
-              <div className="mb-4 flex items-center gap-2">
-                <label className="text-xs text-gray-400 whitespace-nowrap">Filter by purpose:</label>
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={bannersSearchQuery}
+                  onChange={(e) => setBannersSearchQuery(e.target.value)}
+                  placeholder="Search banners…"
+                  className="flex-1 min-w-[120px] px-3 py-1.5 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#0066ff]"
+                />
+                <label className="text-xs text-gray-400 whitespace-nowrap">Purpose:</label>
                 <select
                   value={bannersFilterPurpose}
                   onChange={(e) => setBannersFilterPurpose(e.target.value as ImagePurpose | "all")}
@@ -606,6 +651,13 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
                     </option>
                   ))}
                 </select>
+                <button
+                  type="button"
+                  onClick={() => setShowFavoritesOnly((v) => !v)}
+                  className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 ${showFavoritesOnly ? "bg-[#0066ff] text-white" : "bg-[#1a1a1a] border border-[#3a3a3a] text-gray-400 hover:text-amber-400"}`}
+                >
+                  ★ Favorites
+                </button>
               </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredBanners.map((banner) => (
@@ -651,13 +703,32 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
                     <p className="text-xs text-gray-400 mb-2">
                       {banner.slides.length} {banner.slides.length === 1 ? "slide" : "slides"} • {banner.aspectRatio}
                     </p>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleFavorite(banner.id)}
+                        className={`p-1.5 rounded ${favoriteIds.has(banner.id) ? "text-amber-400" : "text-gray-500 hover:text-amber-400"}`}
+                        title={favoriteIds.has(banner.id) ? "Unfavorite" : "Favorite"}
+                      >
+                        <svg className="w-4 h-4" fill={favoriteIds.has(banner.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                        </svg>
+                      </button>
                       <button
                         onClick={() => onSelectBanner(banner.slides, banner.aspectRatio)}
-                        className="flex-1 px-3 py-1.5 bg-[#0066ff] text-white rounded text-sm hover:bg-[#0052cc] transition-colors"
+                        className="px-3 py-1.5 bg-[#0066ff] text-white rounded text-sm hover:bg-[#0052cc] transition-colors"
                       >
                         Open
                       </button>
+                      {onUseAsTemplate && (
+                        <button
+                          onClick={() => onUseAsTemplate(banner.slides, banner.aspectRatio)}
+                          className="px-3 py-1.5 bg-[#3a3a3a] text-gray-300 rounded text-sm hover:bg-[#4a4a4a] transition-colors"
+                          title="Open a copy in editor without changing the original"
+                        >
+                          Use as template
+                        </button>
+                      )}
                       <button
                         onClick={() => handleDeleteBanner(banner.id)}
                         className="px-3 py-1.5 bg-[#3a3a3a] text-gray-300 rounded text-sm hover:bg-[#4a4a4a] transition-colors"
@@ -889,8 +960,15 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
             </div>
           ) : (
             <>
-              <div className="mb-4 flex items-center gap-2">
-                <label className="text-xs text-gray-400 whitespace-nowrap">Filter by purpose:</label>
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <input
+                  type="text"
+                  value={assetsSearchQuery}
+                  onChange={(e) => setAssetsSearchQuery(e.target.value)}
+                  placeholder="Search assets…"
+                  className="flex-1 min-w-[120px] px-3 py-1.5 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#0066ff]"
+                />
+                <label className="text-xs text-gray-400 whitespace-nowrap">Purpose:</label>
                 <select
                   value={assetsFilterPurpose}
                   onChange={(e) => setAssetsFilterPurpose(e.target.value as ImagePurpose | "all")}
@@ -903,12 +981,19 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
                     </option>
                   ))}
                 </select>
+                <button
+                  type="button"
+                  onClick={() => setShowFavoritesOnly((v) => !v)}
+                  className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 ${showFavoritesOnly ? "bg-[#0066ff] text-white" : "bg-[#1a1a1a] border border-[#3a3a3a] text-gray-400 hover:text-amber-400"}`}
+                >
+                  ★ Favorites
+                </button>
               </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
               {filteredAssets.map((asset) => (
                 <div
                   key={asset.id}
-                  className={`bg-[#2a2a2a] rounded-xl border overflow-hidden transition-colors group cursor-pointer ${
+                  className={`bg-[#2a2a2a] rounded-xl border overflow-hidden transition-colors group cursor-pointer relative ${
                     selectedReferenceImage?.id === asset.id
                       ? "border-[#0066ff] ring-2 ring-[#0066ff]/50"
                       : "border-[#3a3a3a] hover:border-[#4a4a4a]"
@@ -921,6 +1006,16 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
                     }
                   }}
                 >
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleToggleFavorite(asset.id); }}
+                    className={`absolute top-1 right-1 z-10 p-1 rounded ${favoriteIds.has(asset.id) ? "text-amber-400" : "text-gray-500 hover:text-amber-400 opacity-0 group-hover:opacity-100"}`}
+                    title={favoriteIds.has(asset.id) ? "Unfavorite" : "Favorite"}
+                  >
+                    <svg className="w-4 h-4" fill={favoriteIds.has(asset.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                    </svg>
+                  </button>
                   <div className="aspect-square bg-[#1a1a1a] relative overflow-hidden w-full">
                     <img
                       src={asset.imageUrl}

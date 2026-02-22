@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams, usePathname, useRouter } from "next/navigation";
 import BannerCarousel from "@/components/BannerCarousel";
 import ImageSourcePanel from "@/components/ImageSourcePanel";
 import CalendarPanel from "@/components/CalendarPanel";
@@ -18,6 +19,7 @@ import type { Slide, AspectRatio } from "@/types/banner";
 import { resizeDataUrlToAspect, resizeDataUrlToMaxDimension } from "@/lib/resizeToAspect";
 import { type ImagePurpose, IMAGE_PURPOSE_OPTIONS, IMAGE_PURPOSE_ASPECT_RATIO } from "@/lib/imagePurpose";
 import { buildTextToImagePrompt, buildImageToImagePrompt, type CampaignPurposeType } from "@/lib/imagePrompt";
+import { getBrandPromptSuffix, getBrandKit, setBrandKit } from "@/lib/brandKit";
 import type { Celebration } from "@/lib/calendar";
 
 const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
@@ -27,8 +29,28 @@ const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
   { value: "1:1", label: "1:1" },
 ];
 
+const VALID_NAV_IDS: NavItemId[] = ["home", "create", "product-banner", "banners", "gallery", "templates", "help"];
+
 export default function EditorPage() {
-  const [activeNav, setActiveNav] = useState<NavItemId>("home");
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+  const [activeNavState, setActiveNavState] = useState<NavItemId>("home");
+  const activeNav = activeNavState;
+  const setActiveNav = (id: NavItemId) => {
+    setActiveNavState(id);
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.set("view", id);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+  const isInitialMount = useRef(true);
+  useEffect(() => {
+    const view = searchParams?.get("view");
+    if (view && VALID_NAV_IDS.includes(view as NavItemId)) {
+      setActiveNavState(view as NavItemId);
+    }
+    isInitialMount.current = false;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- only on mount
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
   const [slides, setSlides] = useState<Slide[]>([]);
   const [autoplay, setAutoplay] = useState(true);
@@ -42,12 +64,82 @@ export default function EditorPage() {
   const [campaignPurposeType, setCampaignPurposeType] = useState<CampaignPurposeType>("general");
   const [bannersRefreshTrigger, setBannersRefreshTrigger] = useState(0);
   const [selectedEvent, setSelectedEvent] = useState<Celebration | null>(null);
+  const [brandPromptSuffix, setBrandPromptSuffix] = useState("");
+  const [batchListText, setBatchListText] = useState("");
+  const [batchGenerating, setBatchGenerating] = useState(false);
+  const [batchProgress, setBatchProgress] = useState("");
+  const [batchError, setBatchError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBrandPromptSuffix(getBrandKit().brandPromptSuffix ?? "");
+  }, []);
 
   const addSlide = (slide: Slide, source?: "upload" | "generate") => {
     setSlides((prev) => [...prev, slide]);
     setActiveNav("create");
     if (source === "upload") {
       setActiveTab("editor");
+    }
+  };
+
+  const generateSlideId = () => `slide-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+  const handleBatchGenerate = async () => {
+    const lines = batchListText
+      .split(/\n/)
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, 15);
+    if (lines.length === 0) return;
+    setBatchGenerating(true);
+    setBatchError(null);
+    const campaignText = campaignPurposeType === "event" ? (selectedEvent?.name ?? productName) : productName;
+    const brandSuffix = getBrandPromptSuffix().trim() || undefined;
+    const slides: Slide[] = [];
+    try {
+      for (let i = 0; i < lines.length; i++) {
+        setBatchProgress(`${i + 1}/${lines.length}`);
+        const promptToSend = buildTextToImagePrompt(lines[i], aspectRatio, {
+          eventName: selectedEvent?.name,
+          campaignPurposeType,
+          campaignText,
+          brandPromptSuffix: brandSuffix,
+        });
+        const res = await fetch("/api/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: promptToSend, aspectRatio }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed to generate image");
+        let imageUrl = data.imageUrl;
+        if (!imageUrl) throw new Error("No image in response");
+        if (!imageUrl.startsWith("data:")) {
+          const blob = await (await fetch(imageUrl)).blob();
+          imageUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(blob);
+          });
+        }
+        imageUrl = await resizeDataUrlToAspect(imageUrl, aspectRatio);
+        slides.push({ id: generateSlideId(), imageUrl, prompt: lines[i] });
+      }
+      setSlides(slides);
+      setActiveTab("editor");
+      setActiveNav("create");
+      setBatchListText("");
+    } catch (err) {
+      setBatchError(err instanceof Error ? err.message : "Batch generation failed");
+      setSlides(slides);
+      if (slides.length > 0) {
+        setActiveTab("editor");
+        setActiveNav("create");
+      }
+    } finally {
+      setBatchGenerating(false);
+      setBatchProgress("");
     }
   };
 
@@ -58,11 +150,27 @@ export default function EditorPage() {
     setActiveNav("create");
   };
 
+  /** Open editor with a copy of the banner (new slide ids) so the original is not modified. */
+  const handleUseAsTemplate = (bannerSlides: Slide[], bannerAspectRatio: string) => {
+    setSlides(bannerSlides.map((s) => ({ ...s, id: generateSlideId() })));
+    setAspectRatio(bannerAspectRatio as AspectRatio);
+    setActiveTab("editor");
+    setActiveNav("create");
+  };
+
   const handleSelectForEdit = (slide: Slide, aspectRatio: AspectRatio) => {
     setSlides([slide]);
     setAspectRatio(aspectRatio);
     setActiveNav("create");
     setActiveTab("editor");
+  };
+
+  /** Add a slide to the carousel and open editor (Duplicate / use as template from gallery). */
+  const handleAddToEditor = (slide: Slide, aspectRatio: AspectRatio) => {
+    setSlides((prev) => [...prev, slide]);
+    setAspectRatio(aspectRatio);
+    setActiveTab("editor");
+    setActiveNav("create");
   };
 
   const handleSelectAsset = (imageUrl: string) => {
@@ -137,7 +245,7 @@ export default function EditorPage() {
     const slide = slides[index];
     const referenceImage = slide?.imageUrl ? await getImageBase64FromUrl(slide.imageUrl) : null;
     const campaignText = campaignPurposeType === "event" ? (selectedEvent?.name ?? productName) : productName;
-    const campaignOpts = { campaignPurposeType, campaignText };
+    const campaignOpts = { campaignPurposeType, campaignText, brandPromptSuffix: getBrandPromptSuffix().trim() || undefined };
     const eventStyle = selectedEvent?.name?.trim() && campaignPurposeType !== "event" ? ` Style: festive for ${selectedEvent.name}.` : "";
     const promptToSend = referenceImage
       ? buildImageToImagePrompt(promptTrimmed + eventStyle, aspectRatio, campaignOpts)
@@ -183,6 +291,7 @@ export default function EditorPage() {
             <BannersView
               refreshTrigger={bannersRefreshTrigger}
               onSelectBanner={handleSelectBanner}
+              onUseAsTemplate={handleUseAsTemplate}
               onSelectAsset={handleSelectAsset}
             />
           )}
@@ -190,6 +299,7 @@ export default function EditorPage() {
           {activeNav === "gallery" && (
             <GalleryView
               onSelectForEdit={handleSelectForEdit}
+              onAddToEditor={handleAddToEditor}
               refreshTrigger={bannersRefreshTrigger}
             />
           )}
@@ -339,6 +449,33 @@ export default function EditorPage() {
                   />
                 </div>
 
+              <div className="mb-8 p-6 bg-[#2a2a2a] rounded-xl border border-[#3a3a3a]">
+                <h3 className="text-lg font-semibold text-white mb-2">Batch from list</h3>
+                <p className="text-sm text-gray-400 mb-3">One prompt per line (max 15). Generates all then opens the editor.</p>
+                <textarea
+                  value={batchListText}
+                  onChange={(e) => setBatchListText(e.target.value)}
+                  placeholder="e.g.&#10;Summer sale hero&#10;Product spotlight&#10;Festive banner"
+                  rows={4}
+                  className="w-full px-4 py-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#0066ff] resize-y mb-3"
+                  disabled={batchGenerating}
+                />
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleBatchGenerate}
+                    disabled={batchGenerating || !batchListText.trim()}
+                    className="px-4 py-2 bg-[#0066ff] text-white rounded-lg text-sm font-medium hover:bg-[#0052cc] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {batchGenerating ? `Generating… ${batchProgress}` : "Generate from list"}
+                  </button>
+                  <span className="text-xs text-gray-500">Uses current aspect ratio and Settings (purpose, campaign, brand).</span>
+                </div>
+                {batchError && (
+                  <p className="mt-2 text-sm text-red-400" role="alert">{batchError}</p>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div className="p-6 bg-[#2a2a2a] rounded-xl border border-[#3a3a3a] hover:border-[#4a4a4a] transition-colors">
                   <div className="flex items-center gap-3 mb-3">
@@ -441,6 +578,21 @@ export default function EditorPage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+                    <div className="pt-2 border-t border-[#3a3a3a]">
+                      <label className="block text-sm text-gray-400 mb-2">Brand kit</label>
+                      <input
+                        type="text"
+                        value={brandPromptSuffix}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setBrandPromptSuffix(v);
+                          setBrandKit({ ...getBrandKit(), brandPromptSuffix: v.trim() || undefined });
+                        }}
+                        placeholder="e.g. Brand: Acme, blue theme"
+                        className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#0066ff]"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Appended to every generation prompt.</p>
                     </div>
                     <div className="flex items-center gap-4">
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -597,6 +749,7 @@ export default function EditorPage() {
         <RightSidebar
           currentSlides={slides}
           onSelectBanner={handleSelectBanner}
+          onUseAsTemplate={handleUseAsTemplate}
           bannersRefreshTrigger={bannersRefreshTrigger}
         />
       </div>

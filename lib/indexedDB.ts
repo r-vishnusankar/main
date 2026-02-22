@@ -98,6 +98,8 @@ export interface StoredBannerRecord {
   createdAt: string;
   name?: string;
   imagePurpose?: ImagePurpose;
+  /** Optional reminder date (YYYY-MM-DD) for campaigns. */
+  reminderDate?: string;
 }
 
 export async function saveBanner(banner: StoredBannerRecord): Promise<void> {

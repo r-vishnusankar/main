@@ -10,6 +10,7 @@ import {
   IMAGE_PURPOSE_PROMPTS,
 } from "@/lib/imagePurpose";
 import { buildTextToImagePrompt, buildImageToImagePrompt, type CampaignPurposeType } from "@/lib/imagePrompt";
+import { getBrandPromptSuffix } from "@/lib/brandKit";
 
 function generateId(): string {
   return `slide-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -170,15 +171,34 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
       eventName: selectedEvent?.name,
       campaignPurposeType,
       campaignText,
+      brandPromptSuffix: getBrandPromptSuffix().trim() || undefined,
     });
     try {
-      const res = await fetch("/api/generate-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: promptToSend, aspectRatio, enhanceQuality }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to generate image");
+      let res: Response | null = null;
+      let data: { imageUrl?: string; error?: string; textOnlyFallback?: boolean } = {};
+      for (let attempt = 0; attempt <= 1; attempt++) {
+        try {
+          res = await fetch("/api/generate-image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: promptToSend, aspectRatio, enhanceQuality }),
+          });
+          data = await res.json();
+          if (res.ok) break;
+          if ((res.status === 502 || res.status === 503) && attempt === 0) {
+            await new Promise((r) => setTimeout(r, 1500));
+            continue;
+          }
+          throw new Error(data.error ?? "Failed to generate image");
+        } catch (err) {
+          if (attempt === 0 && (err instanceof TypeError || (err as Error).message?.includes("fetch"))) {
+            await new Promise((r) => setTimeout(r, 1500));
+            continue;
+          }
+          throw err;
+        }
+      }
+      if (!res?.ok) throw new Error(data.error ?? "Failed to generate image");
       let imageUrl = data.imageUrl;
       if (!imageUrl) throw new Error("No image in response");
 
@@ -283,20 +303,42 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
         base64 = resizedMatch[2];
         mimeType = resizedMatch[1];
       }
-      const promptToSend = buildImageToImagePrompt(trimmed, aspectRatio, { campaignPurposeType, campaignText });
-      const res = await fetch("/api/generate-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: promptToSend,
-          imageBase64: base64,
-          imageMimeType: mimeType,
-          aspectRatio,
-          enhanceQuality,
-        }),
+      const promptToSend = buildImageToImagePrompt(trimmed, aspectRatio, {
+        campaignPurposeType,
+        campaignText,
+        brandPromptSuffix: getBrandPromptSuffix().trim() || undefined,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to create banner");
+      let res: Response | null = null;
+      let data: { imageUrl?: string; error?: string; textOnlyFallback?: boolean } = {};
+      for (let attempt = 0; attempt <= 1; attempt++) {
+        try {
+          res = await fetch("/api/generate-image", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: promptToSend,
+              imageBase64: base64,
+              imageMimeType: mimeType,
+              aspectRatio,
+              enhanceQuality,
+            }),
+          });
+          data = await res.json();
+          if (res.ok) break;
+          if ((res.status === 502 || res.status === 503) && attempt === 0) {
+            await new Promise((r) => setTimeout(r, 1500));
+            continue;
+          }
+          throw new Error(data.error ?? "Failed to create banner");
+        } catch (err) {
+          if (attempt === 0 && (err instanceof TypeError || (err as Error).message?.includes("fetch"))) {
+            await new Promise((r) => setTimeout(r, 1500));
+            continue;
+          }
+          throw err;
+        }
+      }
+      if (!res?.ok) throw new Error(data.error ?? "Failed to create banner");
       let imageUrl = data.imageUrl;
       if (!imageUrl) throw new Error("No image in response");
       if (data.textOnlyFallback) {

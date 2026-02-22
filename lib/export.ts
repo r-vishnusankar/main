@@ -135,10 +135,17 @@ export interface ExportOptions {
   aspectRatio: AspectRatio;
   autoplay: boolean;
   autoplaySpeed: number;
+  /** Export preset name (e.g. instagram, facebook) for optional readme. */
+  exportPreset?: string;
 }
 
+const PLATFORM_README: Record<string, string> = {
+  instagram: "Instagram recommended sizes:\n- Feed: 1080x1080 (1:1) or 1080x1350 (4:5)\n- Story: 1080x1920 (9:16)\n- Carousel: 1080x1080 per slide\n",
+  facebook: "Facebook recommended sizes:\n- Feed: 1200x630 (1.91:1)\n- Story: 1080x1920 (9:16)\n- Cover: 820x312\n",
+};
+
 export async function buildBannerZip(options: ExportOptions): Promise<Blob> {
-  const { slides, aspectRatio, autoplay, autoplaySpeed } = options;
+  const { slides, aspectRatio, autoplay, autoplaySpeed, exportPreset } = options;
   const blobs = await getImageBlobs(slides);
   const zip = new JSZip();
   const imagePaths: string[] = [];
@@ -146,6 +153,9 @@ export async function buildBannerZip(options: ExportOptions): Promise<Blob> {
     const name = `images/slide-${i + 1}.png`;
     imagePaths.push(name);
     zip.file(name, blobs[i], { binary: true });
+  }
+  if (exportPreset && PLATFORM_README[exportPreset]) {
+    zip.file("readme.txt", PLATFORM_README[exportPreset]);
   }
   const html = getCarouselHtml(
     imagePaths,

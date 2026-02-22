@@ -51,6 +51,8 @@ export function buildTextToImagePrompt(
     noQualitySuffix?: boolean;
     campaignPurposeType?: CampaignPurposeType | null;
     campaignText?: string | null;
+    /** From brand kit (e.g. "Brand: Acme, blue theme"). */
+    brandPromptSuffix?: string | null;
   }
 ): string {
   const capped = capPromptLength(userPrompt);
@@ -60,8 +62,9 @@ export function buildTextToImagePrompt(
       ? `Festive ${options.eventName.trim()} theme: ${campaignPrefix}${capped}`
       : `${campaignPrefix}${capped}`;
   const aspectPhrase = `Aspect ratio ${aspectRatio}.`;
+  const brand = (options?.brandPromptSuffix || "").trim();
   const quality = options?.noQualitySuffix ? "" : ` ${QUALITY_SUFFIX}`;
-  return `${withEvent}. ${aspectPhrase}${quality}`.trim();
+  return `${withEvent}. ${aspectPhrase}${brand ? ` ${brand}` : ""}${quality}`.trim();
 }
 
 /**
@@ -71,10 +74,11 @@ export function buildTextToImagePrompt(
 export function buildImageToImagePrompt(
   styleAndLayout: string,
   aspectRatio: string,
-  options?: { noQualitySuffix?: boolean; campaignPurposeType?: CampaignPurposeType | null; campaignText?: string | null }
+  options?: { noQualitySuffix?: boolean; campaignPurposeType?: CampaignPurposeType | null; campaignText?: string | null; brandPromptSuffix?: string | null }
 ): string {
   const capped = capPromptLength(styleAndLayout);
   const campaignPrefix = getCampaignPrefix(options?.campaignPurposeType, options?.campaignText);
+  const brand = (options?.brandPromptSuffix || "").trim();
   const quality = options?.noQualitySuffix ? "" : ` ${QUALITY_SUFFIX}`;
-  return `Create a single banner or marketing image based on this product image. ${campaignPrefix}Style and layout: ${capped}. Aspect ratio ${aspectRatio}. Output only the generated image.${quality}`.trim();
+  return `Create a single banner or marketing image based on this product image. ${campaignPrefix}Style and layout: ${capped}. Aspect ratio ${aspectRatio}.${brand ? ` ${brand}` : ""} Output only the generated image.${quality}`.trim();
 }

@@ -13,6 +13,7 @@ import {
 } from "@/lib/calendar";
 import { saveAsset, openDB } from "@/lib/indexedDB";
 import { buildTextToImagePrompt } from "@/lib/imagePrompt";
+import { getBrandPromptSuffix } from "@/lib/brandKit";
 import type { Slide } from "@/types/banner";
 
 function generateId(): string {
@@ -77,7 +78,8 @@ export default function CalendarPanel({ onAddSlide, productName, selectedEvent, 
     const product = productName.trim() || "your product";
     const prompt = buildTextToImagePrompt(
       `Festive ${celebrationName} banner featuring ${product}, professional marketing banner, clean design`,
-      "16:9"
+      "16:9",
+      { brandPromptSuffix: getBrandPromptSuffix().trim() || undefined }
     );
     setError(null);
     setGenerating(true);
