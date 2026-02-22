@@ -18,8 +18,10 @@ import {
   type ImagePurpose,
   IMAGE_PURPOSE_OPTIONS,
   IMAGE_PURPOSE_PROMPTS,
+  IMAGE_PURPOSE_ASPECT_RATIO,
   getPurposeLabel,
 } from "@/lib/imagePurpose";
+import { buildImageToImagePrompt } from "@/lib/imagePrompt";
 
 interface StoredBanner {
   id: string;
@@ -286,36 +288,28 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
       setUploadProgress(80);
 
       const updatedAssets = [...assets, newAsset];
-      
-      // Limit to 50 assets to prevent storage overflow
-      const maxAssets = 50;
-      const assetsToSave = updatedAssets.slice(-maxAssets);
-      
+
       setUploadProgress(90);
 
       try {
         if (useIndexedDB) {
-          // Save to IndexedDB
+          // Save to IndexedDB (each asset stored by id; no overwrite)
           await saveAsset(newAsset);
-          setAssets(assetsToSave);
-          
+          setAssets(updatedAssets);
+
           // Update storage info
           const usage = await getStorageUsage();
           setStorageInfo(usage);
         } else {
-          // Fallback to localStorage
+          // Fallback to localStorage: save all assets (no truncation)
           localStorage.setItem(
             "savedAssets",
-            JSON.stringify(assetsToSave.map(({ file, ...rest }) => rest))
+            JSON.stringify(updatedAssets.map(({ file, ...rest }) => rest))
           );
-          setAssets(assetsToSave);
-        }
-        
-        if (updatedAssets.length > maxAssets) {
-          setUploadError(`Storage limit reached. Only the latest ${maxAssets} assets are kept.`);
+          setAssets(updatedAssets);
         }
       } catch (storageError: any) {
-        // Handle quota exceeded error (for localStorage fallback)
+        // Handle quota exceeded error (for localStorage fallback only)
         if (!useIndexedDB && (storageError.name === "QuotaExceededError" || storageError.message?.includes("quota"))) {
           const reducedAssets = updatedAssets.slice(-20);
           try {
@@ -445,14 +439,17 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
       // Generate multiple variations
       const generatedImages: StoredAsset[] = [];
       
+      const aspectRatio = IMAGE_PURPOSE_ASPECT_RATIO[generateImagePurpose];
+      const promptToSend = buildImageToImagePrompt(trimmed, aspectRatio);
       for (let i = 0; i < numVariations; i++) {
         const res = await fetch("/api/generate-image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: trimmed,
+            prompt: promptToSend,
             imageBase64: base64,
             imageMimeType: mimeType,
+            aspectRatio,
           }),
         });
         const data = await res.json();
@@ -490,38 +487,30 @@ export default function BannersView({ onSelectBanner, onSelectAsset, refreshTrig
         });
       }
 
-      // Add all generated images to assets
+      // Add all generated images to assets (no overwrite; all saved to gallery)
         const updatedAssets = [...assets, ...generatedImages];
-        
-        // Limit to 50 assets to prevent storage overflow
-        const maxAssets = 50;
-        const assetsToSave = updatedAssets.slice(-maxAssets);
-        
+
         try {
           if (useIndexedDB) {
-            // Save to IndexedDB
+            // Save to IndexedDB (each asset stored by id; no overwrite)
             for (const asset of generatedImages) {
               await saveAsset(asset);
             }
-            setAssets(assetsToSave);
-            
+            setAssets(updatedAssets);
+
             // Update storage info
             const usage = await getStorageUsage();
             setStorageInfo(usage);
           } else {
-            // Fallback to localStorage (strip file, keep imagePurpose)
+            // Fallback to localStorage: save all assets (no truncation)
             localStorage.setItem(
               "savedAssets",
-              JSON.stringify(assetsToSave.map(({ file, ...rest }) => rest))
+              JSON.stringify(updatedAssets.map(({ file, ...rest }) => rest))
             );
-            setAssets(assetsToSave);
-          }
-
-          if (updatedAssets.length > maxAssets) {
-            setGenerateError(`Storage limit reached. Only the latest ${maxAssets} assets are kept.`);
+            setAssets(updatedAssets);
           }
         } catch (storageError: any) {
-          // Handle quota exceeded error (for localStorage fallback)
+          // Handle quota exceeded error (for localStorage fallback only)
           if (!useIndexedDB && (storageError.name === "QuotaExceededError" || storageError.message?.includes("quota"))) {
             const reducedAssets = updatedAssets.slice(-20);
             try {

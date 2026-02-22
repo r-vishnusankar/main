@@ -9,6 +9,7 @@ import {
   IMAGE_PURPOSE_OPTIONS,
   IMAGE_PURPOSE_PROMPTS,
 } from "@/lib/imagePurpose";
+import { buildTextToImagePrompt, buildImageToImagePrompt, type CampaignPurposeType } from "@/lib/imagePrompt";
 
 function generateId(): string {
   return `slide-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -43,11 +44,15 @@ interface ImageSourcePanelProps {
   initialImagePurpose?: ImagePurpose;
   /** When set, the event name is included in the prompt when generating (event-themed image). */
   selectedEvent?: { name: string; date: string } | null;
+  /** Purpose type from Settings (Season, Event, Promotion) – passed into generation. */
+  campaignPurposeType?: CampaignPurposeType | null;
+  /** Campaign/product text from Settings (e.g. "Summer sale 20%") – passed into generation. */
+  campaignText?: string | null;
 }
 
 const DEFAULT_PURPOSE: ImagePurpose = "homepage_banner";
 
-export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPrompt, workflow, onSaveBanner, initialImagePurpose, selectedEvent }: ImageSourcePanelProps) {
+export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPrompt, workflow, onSaveBanner, initialImagePurpose, selectedEvent, campaignPurposeType, campaignText }: ImageSourcePanelProps) {
   const [prompt, setPrompt] = useState(
     () => suggestedPrompt ?? (workflow === "generate" ? IMAGE_PURPOSE_PROMPTS[initialImagePurpose ?? DEFAULT_PURPOSE] : "")
   );
@@ -63,6 +68,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
   const [bannerInstructions, setBannerInstructions] = useState(suggestedPrompt ?? "");
   const [creatingBanner, setCreatingBanner] = useState(false);
   const [mode, setMode] = useState<"text" | "product">("text");
+  const [enhanceQuality, setEnhanceQuality] = useState(false);
   const effectiveMode: "text" | "product" = workflow === "product" ? "product" : workflow === "generate" ? "text" : mode;
 
   useEffect(() => {
@@ -132,7 +138,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             name: file.name,
             uploadedAt: new Date().toISOString(),
           });
-          localStorage.setItem("savedAssets", JSON.stringify(assets.slice(-50))); // Keep last 50
+          localStorage.setItem("savedAssets", JSON.stringify(assets));
         }
       } catch (err) {
         console.warn("Failed to save uploaded image to assets:", err);
@@ -160,15 +166,16 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
     }
     setError(null);
     setGenerating(true);
-    const promptWithEvent = selectedEvent?.name?.trim()
-      ? `Festive ${selectedEvent.name} theme: ${trimmed}`
-      : trimmed;
-    const promptToSend = `${promptWithEvent}. Generate the image in ${aspectRatio} aspect ratio.`;
+    const promptToSend = buildTextToImagePrompt(trimmed, aspectRatio, {
+      eventName: selectedEvent?.name,
+      campaignPurposeType,
+      campaignText,
+    });
     try {
       const res = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: promptToSend }),
+        body: JSON.stringify({ prompt: promptToSend, aspectRatio, enhanceQuality }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to generate image");
@@ -221,7 +228,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             prompt: trimmed || undefined,
             aspectRatio,
           });
-          localStorage.setItem("savedAssets", JSON.stringify(assets.slice(-50))); // Keep last 50
+          localStorage.setItem("savedAssets", JSON.stringify(assets));
         }
       } catch (err) {
         console.warn("Failed to save generated image to assets:", err);
@@ -276,7 +283,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
         base64 = resizedMatch[2];
         mimeType = resizedMatch[1];
       }
-      const promptToSend = `Create a single banner or marketing image based on this product image. Style and layout: ${trimmed}. Generate the image in ${aspectRatio} aspect ratio. Output only the generated image.`;
+      const promptToSend = buildImageToImagePrompt(trimmed, aspectRatio, { campaignPurposeType, campaignText });
       const res = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -285,6 +292,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
           imageBase64: base64,
           imageMimeType: mimeType,
           aspectRatio,
+          enhanceQuality,
         }),
       });
       const data = await res.json();
@@ -339,7 +347,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             prompt: trimmed || undefined,
             aspectRatio,
           });
-          localStorage.setItem("savedAssets", JSON.stringify(assets.slice(-50))); // Keep last 50
+          localStorage.setItem("savedAssets", JSON.stringify(assets));
         }
       } catch (err) {
         console.warn("Failed to save banner image to assets:", err);
@@ -401,6 +409,15 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
                 className="flex-1 px-4 py-4 bg-transparent text-white placeholder-gray-500 focus:outline-none text-sm"
                 disabled={generating}
               />
+              <label className="flex items-center gap-2 px-2 text-gray-400 text-xs whitespace-nowrap cursor-pointer border-r border-[#3a3a3a]">
+                <input
+                  type="checkbox"
+                  checked={enhanceQuality}
+                  onChange={(e) => setEnhanceQuality(e.target.checked)}
+                  className="rounded border-[#3a3a3a] bg-[#1a1a1a] text-[#0066ff] focus:ring-[#0066ff]"
+                />
+                Enhance
+              </label>
               <button
                 type="button"
                 onClick={handleGenerate}
@@ -446,6 +463,15 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
                   disabled={creatingBanner}
                 />
               </div>
+              <label className="flex items-center gap-2 px-2 text-gray-400 text-xs whitespace-nowrap cursor-pointer border-r border-[#3a3a3a]">
+                <input
+                  type="checkbox"
+                  checked={enhanceQuality}
+                  onChange={(e) => setEnhanceQuality(e.target.checked)}
+                  className="rounded border-[#3a3a3a] bg-[#1a1a1a] text-[#0066ff] focus:ring-[#0066ff]"
+                />
+                Enhance
+              </label>
               <button
                 type="button"
                 onClick={handleCreateBannerFromProduct}

@@ -12,6 +12,7 @@ import {
   type Celebration,
 } from "@/lib/calendar";
 import { saveAsset, openDB } from "@/lib/indexedDB";
+import { buildTextToImagePrompt } from "@/lib/imagePrompt";
 import type { Slide } from "@/types/banner";
 
 function generateId(): string {
@@ -74,14 +75,17 @@ export default function CalendarPanel({ onAddSlide, productName, selectedEvent, 
 
   const handleCreateBanner = async (celebrationName: string) => {
     const product = productName.trim() || "your product";
-    const prompt = `Festive ${celebrationName} banner featuring ${product}, professional marketing banner, high quality, clean design`;
+    const prompt = buildTextToImagePrompt(
+      `Festive ${celebrationName} banner featuring ${product}, professional marketing banner, clean design`,
+      "16:9"
+    );
     setError(null);
     setGenerating(true);
     try {
       const res = await fetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }),
+        body: JSON.stringify({ prompt, aspectRatio: "16:9" }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to generate image");
@@ -124,7 +128,7 @@ export default function CalendarPanel({ onAddSlide, productName, selectedEvent, 
             name: `${celebrationName} – ${product}`,
             uploadedAt: new Date().toISOString(),
           });
-          localStorage.setItem("savedAssets", JSON.stringify(assets.slice(-50))); // Keep last 50
+          localStorage.setItem("savedAssets", JSON.stringify(assets));
         }
       } catch (err) {
         console.warn("Failed to save celebration banner to assets:", err);

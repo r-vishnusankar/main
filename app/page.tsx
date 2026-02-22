@@ -17,6 +17,7 @@ import OnboardingBanner from "@/components/OnboardingBanner";
 import type { Slide, AspectRatio } from "@/types/banner";
 import { resizeDataUrlToAspect, resizeDataUrlToMaxDimension } from "@/lib/resizeToAspect";
 import { type ImagePurpose, IMAGE_PURPOSE_OPTIONS, IMAGE_PURPOSE_ASPECT_RATIO } from "@/lib/imagePurpose";
+import { buildTextToImagePrompt, buildImageToImagePrompt, type CampaignPurposeType } from "@/lib/imagePrompt";
 import type { Celebration } from "@/lib/calendar";
 
 const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
@@ -38,6 +39,7 @@ export default function EditorPage() {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [createWorkflow, setCreateWorkflow] = useState<"generate" | "product">("generate");
   const [selectedCreatePurpose, setSelectedCreatePurpose] = useState<ImagePurpose | null>("homepage_banner");
+  const [campaignPurposeType, setCampaignPurposeType] = useState<CampaignPurposeType>("general");
   const [bannersRefreshTrigger, setBannersRefreshTrigger] = useState(0);
   const [selectedEvent, setSelectedEvent] = useState<Celebration | null>(null);
 
@@ -98,11 +100,6 @@ export default function EditorPage() {
     );
   };
 
-  const augmentPromptWithEvent = (prompt: string): string => {
-    if (!selectedEvent?.name?.trim()) return prompt;
-    return `Festive ${selectedEvent.name} theme: ${prompt}`;
-  };
-
   /** Get base64 + mime from a slide image URL for use as reference in image-to-image generation. Resizes to max 1024px to avoid API failures. */
   const getImageBase64FromUrl = async (imageUrl: string): Promise<{ imageBase64: string; imageMimeType: string } | null> => {
     if (!imageUrl?.trim()) return null;
@@ -139,18 +136,13 @@ export default function EditorPage() {
     const promptTrimmed = prompt.trim();
     const slide = slides[index];
     const referenceImage = slide?.imageUrl ? await getImageBase64FromUrl(slide.imageUrl) : null;
-    const aspectSuffix = ` Generate the image in ${aspectRatio} aspect ratio.`;
-    // With reference image: put main prompt first, append event as style hint (works better with image-to-image)
-    // Without reference image: use event-augmented prompt as before
-    let promptWithEvent: string;
-    if (referenceImage) {
-      promptWithEvent = selectedEvent?.name?.trim()
-        ? `${promptTrimmed}.${aspectSuffix} Style: festive for ${selectedEvent.name}.`
-        : `${promptTrimmed}.${aspectSuffix}`;
-    } else {
-      promptWithEvent = `${augmentPromptWithEvent(promptTrimmed)}.${aspectSuffix}`;
-    }
-    const body: { prompt: string; imageBase64?: string; imageMimeType?: string; aspectRatio?: AspectRatio } = { prompt: promptWithEvent, aspectRatio };
+    const campaignText = campaignPurposeType === "event" ? (selectedEvent?.name ?? productName) : productName;
+    const campaignOpts = { campaignPurposeType, campaignText };
+    const eventStyle = selectedEvent?.name?.trim() && campaignPurposeType !== "event" ? ` Style: festive for ${selectedEvent.name}.` : "";
+    const promptToSend = referenceImage
+      ? buildImageToImagePrompt(promptTrimmed + eventStyle, aspectRatio, campaignOpts)
+      : buildTextToImagePrompt(promptTrimmed, aspectRatio, { eventName: selectedEvent?.name, ...campaignOpts });
+    const body: { prompt: string; imageBase64?: string; imageMimeType?: string; aspectRatio?: AspectRatio } = { prompt: promptToSend, aspectRatio };
     if (referenceImage) {
       body.imageBase64 = referenceImage.imageBase64;
       body.imageMimeType = referenceImage.imageMimeType;
@@ -223,16 +215,18 @@ export default function EditorPage() {
                   Upload your product image and describe how the banner should look. The template&apos;s suggested style is pre-filled—edit as needed.
                 </p>
                 <p className="text-xs text-gray-500 mb-4">Creating at <span className="text-gray-400 font-medium">{aspectRatio}</span> aspect ratio</p>
-                <ImageSourcePanel
-                  aspectRatio={aspectRatio}
-                  onAddSlide={(slide) => {
-                    setSlides((prev) => [...prev, slide]);
-                    setActiveNav("create");
-                    setActiveTab("editor");
-                  }}
-                  suggestedPrompt={suggestedPrompt}
-                  workflow="product"
-                />
+                  <ImageSourcePanel
+                    aspectRatio={aspectRatio}
+                    onAddSlide={(slide) => {
+                      setSlides((prev) => [...prev, slide]);
+                      setActiveNav("create");
+                      setActiveTab("editor");
+                    }}
+                    suggestedPrompt={suggestedPrompt}
+                    workflow="product"
+                    campaignPurposeType={campaignPurposeType}
+                    campaignText={campaignPurposeType === "event" ? (selectedEvent?.name ?? productName) : productName}
+                  />
               </div>
             </div>
           )}
@@ -311,6 +305,8 @@ export default function EditorPage() {
                     workflow="generate"
                     initialImagePurpose={selectedCreatePurpose ?? undefined}
                     selectedEvent={selectedEvent}
+                    campaignPurposeType={campaignPurposeType}
+                    campaignText={campaignPurposeType === "event" ? (selectedEvent?.name ?? productName) : productName}
                     onSaveBanner={async (bannerSlides, bannerAspectRatio, imagePurpose) => {
                       // Save banner automatically when image is generated
                       try {
@@ -367,6 +363,33 @@ export default function EditorPage() {
                   </div>
                   <div className="space-y-4">
                     <div>
+                      <label className="block text-sm text-gray-400 mb-2">Purpose for generation</label>
+                      <p className="text-xs text-gray-500 mb-2">Passed into every image generation (e.g. season, event, promotion).</p>
+                      <div className="flex flex-wrap gap-2">
+                        {(
+                          [
+                            { value: "season" as const, label: "Season" },
+                            { value: "event" as const, label: "Event" },
+                            { value: "promotion" as const, label: "Promotion" },
+                            { value: "general" as const, label: "General" },
+                          ] as const
+                        ).map(({ value, label }) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setCampaignPurposeType(value)}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                              campaignPurposeType === value
+                                ? "bg-[#0066ff] text-white"
+                                : "bg-[#1a1a1a] border border-[#3a3a3a] text-gray-300 hover:border-[#4a4a4a]"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
                       <label className="block text-sm text-gray-400 mb-2">Default purpose</label>
                       <select
                         value={selectedCreatePurpose ?? "homepage_banner"}
@@ -389,12 +412,19 @@ export default function EditorPage() {
                       <p className="text-xs text-gray-500 mt-1">Pre-fills the prompt when you generate.</p>
                     </div>
                     <div>
-                      <label className="block text-sm text-gray-400 mb-2">Product name</label>
+                      <label className="block text-sm text-gray-400 mb-2">
+                        Campaign / product text
+                        {campaignPurposeType !== "general" && (
+                          <span className="text-xs text-gray-500 ml-1">
+                            (for {campaignPurposeType === "event" ? "Event: use calendar event or type below" : campaignPurposeType})
+                          </span>
+                        )}
+                      </label>
                       <input
                         type="text"
                         value={productName}
                         onChange={(e) => setProductName(e.target.value)}
-                        placeholder="e.g. Summer Sale"
+                        placeholder={campaignPurposeType === "event" ? "e.g. Independence Day" : "e.g. Summer sale 20%"}
                         className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#0066ff]"
                       />
                     </div>
