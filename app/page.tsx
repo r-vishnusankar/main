@@ -14,6 +14,7 @@ import HomeView from "@/components/HomeView";
 import BannersView from "@/components/BannersView";
 import GalleryView from "@/components/GalleryView";
 import HelpView from "@/components/HelpView";
+import ContentPublishView from "@/components/ContentPublishView";
 import OnboardingBanner from "@/components/OnboardingBanner";
 import type { Slide, AspectRatio } from "@/types/banner";
 import { resizeDataUrlToAspect, resizeDataUrlToMaxDimension } from "@/lib/resizeToAspect";
@@ -29,7 +30,7 @@ const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
   { value: "1:1", label: "1:1" },
 ];
 
-const VALID_NAV_IDS: NavItemId[] = ["home", "create", "product-banner", "banners", "gallery", "templates", "help"];
+const VALID_NAV_IDS: NavItemId[] = ["home", "create", "product-banner", "banners", "gallery", "templates", "content-publish", "help"];
 
 export default function EditorPage() {
   const searchParams = useSearchParams();
@@ -69,6 +70,12 @@ export default function EditorPage() {
   const [batchGenerating, setBatchGenerating] = useState(false);
   const [batchProgress, setBatchProgress] = useState("");
   const [batchError, setBatchError] = useState<string | null>(null);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("rightSidebarOpen");
+    if (stored === "true") setRightSidebarOpen(true);
+  }, []);
 
   useEffect(() => {
     setBrandPromptSuffix(getBrandKit().brandPromptSuffix ?? "");
@@ -279,12 +286,19 @@ export default function EditorPage() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#1a1a1a] text-white overflow-hidden">
-      <TopNav />
-      <div className="flex-1 flex overflow-hidden">
+    <div className="h-screen flex flex-col text-white overflow-hidden" style={{ background: "var(--background)" }}>
+      <TopNav
+        onToggleRecent={() => {
+          const next = !rightSidebarOpen;
+          setRightSidebarOpen(next);
+          localStorage.setItem("rightSidebarOpen", String(next));
+        }}
+        recentOpen={rightSidebarOpen}
+      />
+      <div className="flex-1 flex overflow-hidden min-w-0">
         <LeftSidebar activeId={activeNav} onNavChange={handleNavChange} />
         
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto min-w-0">
           {activeNav === "home" && <HomeView onNavigate={handleNavChange} />}
           
           {activeNav === "banners" && (
@@ -305,11 +319,11 @@ export default function EditorPage() {
           )}
 
           {activeNav === "product-banner" && (
-            <div className="p-8 max-w-6xl mx-auto">
-              <h1 className="text-4xl font-bold mb-2">Banner from product image</h1>
-              <p className="text-gray-400 mb-8">Choose a template, add your product image, and describe the banner. After creating, you&apos;ll go to the editor.</p>
+            <div className="w-full min-w-0 px-8 py-10">
+              <h1 className="heading-page mb-2">Banner from product image</h1>
+              <p className="text-gray-400 text-[15px] mb-6">Choose a template, add your product image, and describe the banner. You&apos;ll go to the editor after creating.</p>
               <div className="mb-8">
-                <h2 className="text-lg font-semibold text-white mb-3">1. Choose a template</h2>
+                <h2 className="heading-section mb-4">1. Choose a template</h2>
                 <TemplateGallery
                   selectedTemplateId={selectedTemplateId}
                   onSelectTemplate={(templateId, ratio, promptHint) => {
@@ -319,12 +333,12 @@ export default function EditorPage() {
                   }}
                 />
               </div>
-              <div className="p-6 bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-xl border border-[#3a3a3a]">
-                <h2 className="text-lg font-semibold text-white mb-4">2. Add product image and instructions</h2>
-                <p className="text-sm text-gray-400 mb-1">
+              <div className="p-6 rounded-xl border border-white/[0.08] card-glass">
+                <h2 className="heading-section mb-4">2. Add product image and instructions</h2>
+                <p className="text-[14px] text-gray-400 mb-1">
                   Upload your product image and describe how the banner should look. The template&apos;s suggested style is pre-filled—edit as needed.
                 </p>
-                <p className="text-xs text-gray-500 mb-4">Creating at <span className="text-gray-400 font-medium">{aspectRatio}</span> aspect ratio</p>
+                <p className="text-[13px] text-gray-500 mb-4">Creating at <span className="text-gray-300 font-medium">{aspectRatio}</span> aspect ratio</p>
                   <ImageSourcePanel
                     aspectRatio={aspectRatio}
                     onAddSlide={(slide) => {
@@ -342,9 +356,9 @@ export default function EditorPage() {
           )}
 
           {activeNav === "templates" && (
-            <div className="p-8 max-w-6xl mx-auto">
-              <h1 className="text-4xl font-bold mb-6">Templates</h1>
-              <p className="text-gray-400 mb-8">Choose a template to get started with your banner</p>
+            <div className="w-full min-w-0 px-8 py-10">
+              <h1 className="heading-page mb-2">Templates</h1>
+              <p className="text-gray-400 text-[15px] mb-6">Choose a template to get started.</p>
               <TemplateGallery
                 selectedTemplateId={selectedTemplateId}
                 onSelectTemplate={(templateId, ratio, promptHint) => {
@@ -357,20 +371,17 @@ export default function EditorPage() {
             </div>
           )}
 
+          {activeNav === "content-publish" && <ContentPublishView />}
           {activeNav === "help" && <HelpView />}
 
           {activeNav === "create" && (
             <>
             {activeTab === "create" ? (
-            <div className="p-8 max-w-6xl mx-auto">
-              <h1 className="text-4xl font-bold mb-6">Create something new</h1>
-
+            <div className="w-full min-w-0 px-8 py-10">
+              <h1 className="heading-page mb-4">Create</h1>
               <OnboardingBanner />
-
-              {/* What do you want to create? */}
-              <p className="text-gray-400 mb-1">What do you want to create?</p>
-              <p className="text-xs text-gray-500 mb-4">Pick a purpose to get a pre-filled prompt you can edit. Use the Product banner option in the left sidebar to create from a template and your product photo.</p>
-              <div className="flex flex-wrap gap-3 mb-8">
+              <p className="text-gray-400 text-[15px] mb-4">Pick a purpose for a pre-filled prompt, or use Product banner in the sidebar to create from a template.</p>
+              <div className="flex flex-wrap gap-2 mb-8">
                 {IMAGE_PURPOSE_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
@@ -382,18 +393,18 @@ export default function EditorPage() {
                       setSelectedTemplateId(null);
                       setAspectRatio(IMAGE_PURPOSE_ASPECT_RATIO[opt.value] as AspectRatio);
                     }}
-                    className={`px-5 py-3 rounded-xl border text-left transition-colors ${
+                    className={`px-4 py-2 rounded-xl border text-left transition-all text-[14px] font-medium ${
                       createWorkflow === "generate" && selectedCreatePurpose === opt.value
-                        ? "bg-[#0066ff]/10 border-[#0066ff] text-white"
-                        : "bg-[#2a2a2a] border-[#3a3a3a] text-gray-300 hover:border-[#4a4a4a]"
+                        ? "bg-[var(--accent)]/10 border-[var(--accent)]/60 text-white"
+                        : "bg-white/[0.04] border-white/[0.08] text-gray-300 hover:border-white/20 hover:text-white"
                     }`}
                   >
-                    <span className="font-semibold">{opt.label}</span>
+                    {opt.label}
                   </button>
                 ))}
               </div>
 
-              <div className="mb-8 p-6 bg-gradient-to-br from-[#2a2a2a] to-[#1a1a1a] rounded-xl border border-[#3a3a3a]">
+              <div className="mb-8 p-6 rounded-xl border border-white/[0.08] card-glass">
                   {selectedEvent && (
                     <div className="flex items-center justify-between gap-2 mb-4 p-2 rounded-lg bg-[#0066ff]/10 border border-[#0066ff]/30">
                       <span className="text-sm text-gray-300">Using event: {selectedEvent.name}</span>
@@ -449,15 +460,15 @@ export default function EditorPage() {
                   />
                 </div>
 
-              <div className="mb-8 p-6 bg-[#2a2a2a] rounded-xl border border-[#3a3a3a]">
-                <h3 className="text-lg font-semibold text-white mb-2">Batch from list</h3>
-                <p className="text-sm text-gray-400 mb-3">One prompt per line (max 15). Generates all then opens the editor.</p>
+              <div className="mb-8 p-6 rounded-xl border border-white/[0.08] card-glass">
+                <h3 className="heading-section mb-2">Batch from list</h3>
+                <p className="text-[14px] text-gray-400 mb-3">One prompt per line (max 15). Generates all then opens the editor.</p>
                 <textarea
                   value={batchListText}
                   onChange={(e) => setBatchListText(e.target.value)}
                   placeholder="e.g.&#10;Summer sale hero&#10;Product spotlight&#10;Festive banner"
                   rows={4}
-                  className="w-full px-4 py-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#0066ff] resize-y mb-3"
+                  className="input-base resize-y mb-3"
                   disabled={batchGenerating}
                 />
                 <div className="flex items-center gap-3">
@@ -465,24 +476,26 @@ export default function EditorPage() {
                     type="button"
                     onClick={handleBatchGenerate}
                     disabled={batchGenerating || !batchListText.trim()}
-                    className="px-4 py-2 bg-[#0066ff] text-white rounded-lg text-sm font-medium hover:bg-[#0052cc] disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="btn-primary"
                   >
                     {batchGenerating ? `Generating… ${batchProgress}` : "Generate from list"}
                   </button>
-                  <span className="text-xs text-gray-500">Uses current aspect ratio and Settings (purpose, campaign, brand).</span>
+                  <span className="text-[13px] text-gray-500">Uses current aspect ratio and Settings.</span>
                 </div>
                 {batchError && (
-                  <p className="mt-2 text-sm text-red-400" role="alert">{batchError}</p>
+                  <p className="mt-2 text-[13px] text-red-400" role="alert">{batchError}</p>
                 )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div className="p-6 bg-[#2a2a2a] rounded-xl border border-[#3a3a3a] hover:border-[#4a4a4a] transition-colors">
+                <div className="p-6 rounded-xl border border-white/[0.08] card-glass hover:border-white/[0.15] transition-colors">
                   <div className="flex items-center gap-3 mb-3">
-                    <span className="text-3xl">📅</span>
-                    <h3 className="text-xl font-semibold">Celebration Banners</h3>
+                    <span className="w-9 h-9 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-400 flex-shrink-0">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    </span>
+                    <h3 className="heading-section">Celebration Banners</h3>
                   </div>
-                  <p className="text-gray-400 text-sm mb-4">
+                  <p className="text-gray-400 text-[14px] mb-4">
                     Pick a date and region to generate festive banners for holidays and celebrations.
                   </p>
                   <CalendarPanel
@@ -493,15 +506,17 @@ export default function EditorPage() {
                   />
                 </div>
 
-                <div className="p-6 bg-[#2a2a2a] rounded-xl border border-[#3a3a3a] hover:border-[#4a4a4a] transition-colors">
+                <div className="p-6 rounded-xl border border-white/[0.08] card-glass hover:border-white/[0.15] transition-colors">
                   <div className="flex items-center gap-3 mb-3">
-                    <span className="text-3xl">⚙️</span>
-                    <h3 className="text-xl font-semibold">Settings</h3>
+                    <span className="w-9 h-9 rounded-lg bg-white/[0.07] flex items-center justify-center text-gray-300 flex-shrink-0">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+                    </span>
+                    <h3 className="heading-section">Settings</h3>
                   </div>
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm text-gray-400 mb-2">Purpose for generation</label>
-                      <p className="text-xs text-gray-500 mb-2">Passed into every image generation (e.g. season, event, promotion).</p>
+                      <label className="block text-[13px] text-gray-400 mb-2">Purpose for generation</label>
+                      <p className="text-[12px] text-gray-500 mb-2">Passed into every image generation (e.g. season, event, promotion).</p>
                       <div className="flex flex-wrap gap-2">
                         {(
                           [
@@ -515,10 +530,10 @@ export default function EditorPage() {
                             key={value}
                             type="button"
                             onClick={() => setCampaignPurposeType(value)}
-                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
                               campaignPurposeType === value
-                                ? "bg-[#0066ff] text-white"
-                                : "bg-[#1a1a1a] border border-[#3a3a3a] text-gray-300 hover:border-[#4a4a4a]"
+                                ? "bg-[var(--accent)] text-white"
+                                : "bg-white/[0.05] border border-white/[0.1] text-gray-300 hover:border-white/20 hover:text-white"
                             }`}
                           >
                             {label}
@@ -527,7 +542,7 @@ export default function EditorPage() {
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm text-gray-400 mb-2">Default purpose</label>
+                      <label className="block text-[13px] text-gray-400 mb-2">Default purpose</label>
                       <select
                         value={selectedCreatePurpose ?? "homepage_banner"}
                         onChange={(e) => {
@@ -538,7 +553,7 @@ export default function EditorPage() {
                             setSuggestedPrompt(undefined);
                           }
                         }}
-                        className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white focus:outline-none focus:border-[#0066ff]"
+                        className="input-base"
                       >
                         {IMAGE_PURPOSE_OPTIONS.map((opt) => (
                           <option key={opt.value} value={opt.value}>
@@ -546,13 +561,13 @@ export default function EditorPage() {
                           </option>
                         ))}
                       </select>
-                      <p className="text-xs text-gray-500 mt-1">Pre-fills the prompt when you generate.</p>
+                      <p className="text-[12px] text-gray-500 mt-1">Pre-fills the prompt when you generate.</p>
                     </div>
                     <div>
-                      <label className="block text-sm text-gray-400 mb-2">
+                      <label className="block text-[13px] text-gray-400 mb-2">
                         Campaign / product text
                         {campaignPurposeType !== "general" && (
-                          <span className="text-xs text-gray-500 ml-1">
+                          <span className="text-[12px] text-gray-500 ml-1">
                             (for {campaignPurposeType === "event" ? "Event: use calendar event or type below" : campaignPurposeType})
                           </span>
                         )}
@@ -562,15 +577,15 @@ export default function EditorPage() {
                         value={productName}
                         onChange={(e) => setProductName(e.target.value)}
                         placeholder={campaignPurposeType === "event" ? "e.g. Independence Day" : "e.g. Summer sale 20%"}
-                        className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#0066ff]"
+                        className="input-base"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm text-gray-400 mb-2">Aspect ratio</label>
+                      <label className="block text-[13px] text-gray-400 mb-2">Aspect ratio</label>
                       <select
                         value={aspectRatio}
                         onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
-                        className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white focus:outline-none focus:border-[#0066ff]"
+                        className="input-base"
                       >
                         {ASPECT_RATIOS.map(({ value, label }) => (
                           <option key={value} value={value}>
@@ -579,8 +594,8 @@ export default function EditorPage() {
                         ))}
                       </select>
                     </div>
-                    <div className="pt-2 border-t border-[#3a3a3a]">
-                      <label className="block text-sm text-gray-400 mb-2">Brand kit</label>
+                    <div className="pt-2 border-t border-white/[0.08]">
+                      <label className="block text-[13px] text-gray-400 mb-2">Brand kit</label>
                       <input
                         type="text"
                         value={brandPromptSuffix}
@@ -590,9 +605,9 @@ export default function EditorPage() {
                           setBrandKit({ ...getBrandKit(), brandPromptSuffix: v.trim() || undefined });
                         }}
                         placeholder="e.g. Brand: Acme, blue theme"
-                        className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#0066ff]"
+                        className="input-base"
                       />
-                      <p className="text-xs text-gray-500 mt-1">Appended to every generation prompt.</p>
+                      <p className="text-[12px] text-gray-500 mt-1">Appended to every generation prompt.</p>
                     </div>
                     <div className="flex items-center gap-4">
                       <label className="flex items-center gap-2 cursor-pointer">
@@ -600,31 +615,31 @@ export default function EditorPage() {
                           type="checkbox"
                           checked={autoplay}
                           onChange={(e) => setAutoplay(e.target.checked)}
-                          className="w-4 h-4 rounded border-[#3a3a3a] bg-[#1a1a1a] text-[#0066ff] focus:ring-[#0066ff]"
+                          className="w-4 h-4 rounded"
                         />
-                        <span className="text-sm">Autoplay</span>
+                        <span className="text-[14px]">Autoplay</span>
                       </label>
                       {autoplay && (
                         <label className="flex items-center gap-2">
-                          <span className="text-sm text-gray-400">Speed</span>
+                          <span className="text-[14px] text-gray-400">Speed</span>
                           <input
                             type="number"
                             min={2}
                             max={15}
                             value={autoplaySpeed}
                             onChange={(e) => setAutoplaySpeed(Number(e.target.value))}
-                            className="w-20 px-2 py-1 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-white text-sm focus:outline-none focus:border-[#0066ff]"
+                            className="w-20 input-base py-1.5"
                           />
                         </label>
                       )}
                     </div>
-                    <div className="pt-2 border-t border-[#3a3a3a] space-y-2">
+                    <div className="pt-2 border-t border-white/[0.08] space-y-2">
                       <button
                         type="button"
                         onClick={() => setActiveNav("banners")}
-                        className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-sm text-gray-300 hover:bg-[#3a3a3a] hover:text-white transition-colors"
+                        className="btn-secondary w-full text-[13px] py-2"
                       >
-                        📁 Open Banners
+                        Open Banners
                       </button>
                       {slides.length > 0 && (
                         <button
@@ -633,7 +648,7 @@ export default function EditorPage() {
                             setSlides([]);
                             setActiveTab("create");
                           }}
-                          className="w-full px-4 py-2 bg-[#1a1a1a] border border-red-500/40 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                          className="btn-danger w-full text-[13px] py-2"
                         >
                           Clear current slides
                         </button>
@@ -647,7 +662,7 @@ export default function EditorPage() {
                 <div className="mt-8">
                   <button
                     onClick={() => setActiveTab("editor")}
-                    className="px-6 py-3 bg-gradient-to-r from-[#0066ff] to-[#0052cc] text-white rounded-lg font-medium hover:opacity-90 transition-opacity"
+                    className="btn-primary px-6 py-3"
                   >
                     View Editor ({slides.length} {slides.length === 1 ? "slide" : "slides"})
                   </button>
@@ -655,13 +670,13 @@ export default function EditorPage() {
               )}
             </div>
             ) : (
-            <div className="p-8 max-w-7xl mx-auto">
+            <div className="w-full min-w-0 px-6 sm:px-8 py-8 max-w-6xl">
               <div className="flex items-center justify-between mb-6">
                 <div>
-                  <h2 className="text-2xl font-bold">Banner Editor</h2>
+                  <h2 className="heading-page">Banner Editor</h2>
                   {slides.length > 0 && (
-                    <p className="text-sm text-gray-400 mt-1">
-                      {slides.length} {slides.length === 1 ? "slide" : "slides"} • All images are saved in Assets
+                    <p className="text-[14px] text-gray-400 mt-1">
+                      {slides.length} {slides.length === 1 ? "slide" : "slides"} · All images are saved in Assets
                     </p>
                   )}
                 </div>
@@ -671,26 +686,26 @@ export default function EditorPage() {
                       setActiveTab("create");
                       setCreateWorkflow("generate");
                     }}
-                    className="px-4 py-2 bg-gradient-to-r from-[#0066ff] to-[#0052cc] text-white rounded-lg hover:opacity-90 transition-opacity font-medium"
+                    className="btn-primary"
                   >
-                    ✨ Add slide from AI
+                    Add slide from AI
                   </button>
                   <button
                     onClick={() => setActiveTab("create")}
-                    className="px-4 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg hover:bg-[#3a3a3a] transition-colors"
+                    className="btn-secondary"
                   >
-                    ← Back to Create
+                    Back to Create
                   </button>
                 </div>
               </div>
 
               {selectedEvent && (
-                <div className="flex items-center justify-between gap-2 mb-4 p-2 rounded-lg bg-[#0066ff]/10 border border-[#0066ff]/30">
-                  <span className="text-sm text-gray-300">Using event: {selectedEvent.name} — Generate image will include this event in the prompt.</span>
+                <div className="flex items-center justify-between gap-2 mb-4 p-3 rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/25">
+                  <span className="text-[14px] text-gray-300">Using event: {selectedEvent.name}</span>
                   <button
                     type="button"
                     onClick={() => setSelectedEvent(null)}
-                    className="py-1 px-2 rounded text-xs font-medium text-[#0066ff] hover:bg-[#0066ff]/20"
+                    className="py-1 px-2 rounded text-[13px] font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10"
                   >
                     Clear
                   </button>
@@ -699,18 +714,18 @@ export default function EditorPage() {
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
-                  <div className="bg-[#2a2a2a] rounded-xl border border-[#3a3a3a] p-6">
+                  <div className="rounded-xl border border-white/[0.08] card-glass p-6">
                     {slides.length > 0 && (
-                      <div className="mb-4 p-3 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg">
-                        <p className="text-sm text-gray-400">
-                          💡 <strong>Tip:</strong> Uploaded and generated images both add slides here. All are saved in{" "}
+                      <div className="mb-4 p-3 rounded-xl bg-[var(--accent)]/[0.07] border border-[var(--accent)]/20">
+                        <p className="text-[13px] text-gray-400">
+                          <strong className="text-gray-200">Tip:</strong> All images are saved in{" "}
                           <button
                             onClick={() => setActiveNav("banners")}
-                            className="text-[#0066ff] hover:underline"
+                            className="text-[var(--accent)] hover:underline"
                           >
                             Assets
                           </button>
-                          . Use &quot;Add slide from AI&quot; above to generate another image, or go back to Create to upload more.
+                          . Use &ldquo;Add slide from AI&rdquo; to generate more slides.
                         </p>
                       </div>
                     )}
@@ -751,6 +766,12 @@ export default function EditorPage() {
           onSelectBanner={handleSelectBanner}
           onUseAsTemplate={handleUseAsTemplate}
           bannersRefreshTrigger={bannersRefreshTrigger}
+          isOpen={rightSidebarOpen}
+          onToggle={() => {
+            const next = !rightSidebarOpen;
+            setRightSidebarOpen(next);
+            localStorage.setItem("rightSidebarOpen", String(next));
+          }}
         />
       </div>
     </div>

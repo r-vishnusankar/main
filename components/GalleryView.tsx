@@ -5,6 +5,7 @@ import { getAllAssets, getAllBanners, openDB } from "@/lib/indexedDB";
 import type { Slide, AspectRatio } from "@/types/banner";
 import type { StoredAssetRecord, StoredBannerRecord } from "@/lib/indexedDB";
 import { getFavoriteIds, toggleFavorite } from "@/lib/favorites";
+import { getAspectRatioClass } from "@/lib/aspectRatioClass";
 
 export interface GalleryItem {
   id: string;
@@ -158,7 +159,7 @@ export default function GalleryView({ onSelectForEdit, onAddToEditor, refreshTri
 
   if (loading) {
     return (
-      <div className="p-8 flex items-center justify-center text-gray-400">
+      <div className="w-full min-w-0 px-8 py-12 flex items-center justify-center text-gray-400">
         Loading gallery…
       </div>
     );
@@ -166,17 +167,17 @@ export default function GalleryView({ onSelectForEdit, onAddToEditor, refreshTri
 
   if (items.length === 0) {
     return (
-      <div className="p-8 max-w-2xl mx-auto text-center">
+      <div className="w-full min-w-0 px-8 py-12 text-center">
         <h2 className="text-xl font-semibold text-white mb-2">Gallery</h2>
-        <p className="text-gray-400">No created images yet. Generate or upload images from Create or Product banner to see them here.</p>
+        <p className="text-gray-400 text-sm">No images yet. Create or upload images from Create or Product banner to see them here.</p>
       </div>
     );
   }
 
   if (displayItems.length === 0 && (showFavoritesOnly || searchQuery.trim())) {
     return (
-      <div className="p-8 max-w-6xl mx-auto">
-        <h1 className="text-3xl font-bold text-white mb-2">Gallery</h1>
+      <div className="w-full min-w-0 px-8 py-10">
+        <h1 className="text-2xl font-bold text-white mb-2">Gallery</h1>
         <div className="flex flex-wrap items-center gap-4 mb-6">
           <input
             type="text"
@@ -194,39 +195,39 @@ export default function GalleryView({ onSelectForEdit, onAddToEditor, refreshTri
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto">
-      <h1 className="text-3xl font-bold text-white mb-2">Gallery</h1>
-      <p className="text-gray-400 mb-4">View images in a popup or open in the editor to rework.</p>
+      <div className="w-full min-w-0 px-8 py-10">
+      <h1 className="text-[22px] font-semibold text-white mb-2">Gallery</h1>
+      <p className="text-gray-400 text-[15px] mb-6">View images in a popup or open in the editor to rework.</p>
       <div className="flex flex-wrap items-center gap-4 mb-6">
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search by name or prompt…"
-          className="flex-1 min-w-[180px] px-3 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:border-[#0066ff]"
+          className="flex-1 min-w-[180px] px-3 py-2 bg-[var(--background)] border border-[var(--border)] rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
         />
         <button
           type="button"
           onClick={() => setShowFavoritesOnly(false)}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium ${!showFavoritesOnly ? "bg-[#0066ff] text-white" : "bg-[#2a2a2a] text-gray-400 hover:text-white"}`}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${!showFavoritesOnly ? "bg-[var(--accent)] text-white" : "bg-[var(--card-bg)] border border-[var(--border)] text-gray-400 hover:text-white"}`}
         >
           All
         </button>
         <button
           type="button"
           onClick={() => setShowFavoritesOnly(true)}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 ${showFavoritesOnly ? "bg-[#0066ff] text-white" : "bg-[#2a2a2a] text-gray-400 hover:text-white"}`}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-1.5 transition-colors ${showFavoritesOnly ? "bg-[var(--accent)] text-white" : "bg-[var(--card-bg)] border border-[var(--border)] text-gray-400 hover:text-white"}`}
         >
-          <span>★</span> Favorites
+          <span aria-hidden="true">★</span> Favorites
         </button>
       </div>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
         {displayItems.map((item) => (
           <div
             key={item.id}
-            className="rounded-xl border border-[#3a3a3a] bg-[#2a2a2a] overflow-hidden hover:border-[#4a4a4a] transition-all flex flex-col group"
+            className="rounded-xl border border-white/[0.1] card-glass overflow-hidden hover:border-white/20 transition-all flex flex-col group min-w-0"
           >
-            <div className="aspect-video bg-[#1a1a1a] relative">
+            <div className={`${getAspectRatioClass(item.aspectRatio)} bg-[var(--background)] relative min-h-[120px]`}>
               <img
                 src={item.imageUrl}
                 alt={item.title}
@@ -278,7 +279,7 @@ export default function GalleryView({ onSelectForEdit, onAddToEditor, refreshTri
                 </button>
               </div>
             </div>
-            <div className="p-3 flex flex-col gap-1 min-h-0">
+            <div className="p-3 flex flex-col gap-1 min-h-[4.5rem]">
               <span className="text-sm font-medium text-white truncate" title={item.title}>
                 {item.title}
               </span>
@@ -288,7 +289,7 @@ export default function GalleryView({ onSelectForEdit, onAddToEditor, refreshTri
                 </p>
               )}
               {item.aspectRatio && (
-                <span className="text-xs text-gray-500">Resolution: {item.aspectRatio}</span>
+                <span className="text-xs text-gray-500">{item.aspectRatio}</span>
               )}
             </div>
           </div>

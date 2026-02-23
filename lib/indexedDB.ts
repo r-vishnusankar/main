@@ -2,9 +2,10 @@
 import type { ImagePurpose } from "@/lib/imagePurpose";
 
 const DB_NAME = "BannerCreatorDB";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const ASSETS_STORE = "assets";
 const BANNERS_STORE = "banners";
+const CONTENT_POSTS_STORE = "content_posts";
 
 interface DB {
   db: IDBDatabase;
@@ -38,6 +39,12 @@ export async function openDB(): Promise<IDBDatabase> {
       // Create banners store if it doesn't exist
       if (!db.objectStoreNames.contains(BANNERS_STORE)) {
         db.createObjectStore(BANNERS_STORE, { keyPath: "id" });
+      }
+
+      if (!db.objectStoreNames.contains(CONTENT_POSTS_STORE)) {
+        const postsStore = db.createObjectStore(CONTENT_POSTS_STORE, { keyPath: "id" });
+        postsStore.createIndex("scheduledAt", "scheduledAt", { unique: false });
+        postsStore.createIndex("status", "status", { unique: false });
       }
     };
   });
@@ -136,6 +143,78 @@ export async function deleteBanner(id: string): Promise<void> {
     request.onsuccess = () => resolve();
     request.onerror = () => reject(request.error);
   });
+}
+
+export type ContentPostPlatform = "facebook" | "instagram" | "whatsapp" | "social" | "blog" | "shopify_blog";
+export type ContentPostStatus = "draft" | "scheduled" | "published";
+
+export interface StoredContentPostRecord {
+  id: string;
+  imageUrl: string;
+  socialCaption: string;
+  altText: string;
+  blogDescription: string;
+  hashtags: string[];
+  platform: ContentPostPlatform;
+  scheduledAt: string | null;
+  status: ContentPostStatus;
+  createdAt: string;
+  publishedAt?: string;
+  externalId?: string;
+}
+
+export async function saveContentPost(post: StoredContentPostRecord): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([CONTENT_POSTS_STORE], "readwrite");
+    const store = transaction.objectStore(CONTENT_POSTS_STORE);
+    const request = store.put(post);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function getAllContentPosts(): Promise<StoredContentPostRecord[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([CONTENT_POSTS_STORE], "readonly");
+    const store = transaction.objectStore(CONTENT_POSTS_STORE);
+    const request = store.getAll();
+
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function getContentPost(id: string): Promise<StoredContentPostRecord | undefined> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([CONTENT_POSTS_STORE], "readonly");
+    const store = transaction.objectStore(CONTENT_POSTS_STORE);
+    const request = store.get(id);
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function deleteContentPost(id: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([CONTENT_POSTS_STORE], "readwrite");
+    const store = transaction.objectStore(CONTENT_POSTS_STORE);
+    const request = store.delete(id);
+
+    request.onsuccess = () => resolve();
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function updateContentPost(id: string, updates: Partial<StoredContentPostRecord>): Promise<void> {
+  const existing = await getContentPost(id);
+  if (!existing) return;
+  await saveContentPost({ ...existing, ...updates, id });
 }
 
 // Get storage usage estimate

@@ -10,8 +10,8 @@ function formatTimeAgo(iso: string): string {
   const sec = Math.floor((now.getTime() - d.getTime()) / 1000);
   if (sec < 60) return "Just now";
   if (sec < 3600) return `${Math.floor(sec / 60)} min ago`;
-  if (sec < 86400) return `${Math.floor(sec / 3600)} hours ago`;
-  if (sec < 604800) return `${Math.floor(sec / 86400)} days ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+  if (sec < 604800) return `${Math.floor(sec / 86400)}d ago`;
   return d.toLocaleDateString();
 }
 
@@ -25,16 +25,13 @@ interface RecentBanner {
 }
 
 interface RightSidebarProps {
-  /** Current session slides (created images not yet saved as a banner). */
   currentSlides?: Slide[];
-  /** When user clicks a saved banner, open it in the editor. */
   onSelectBanner?: (slides: Slide[], aspectRatio: string) => void;
-  /** Open editor with a copy of the banner (new slide ids). Optional. */
   onUseAsTemplate?: (slides: Slide[], aspectRatio: string) => void;
-  /** When this changes, refetch recent banners. */
   bannersRefreshTrigger?: number;
-  /** Navigate to Banners tab (e.g. for "Open Banners" from settings). */
-  onOpenBanners?: () => void;
+  /** Controlled open state — parent can pass this to open/close programmatically */
+  isOpen?: boolean;
+  onToggle?: () => void;
 }
 
 export default function RightSidebar({
@@ -42,7 +39,28 @@ export default function RightSidebar({
   onSelectBanner,
   onUseAsTemplate,
   bannersRefreshTrigger = 0,
+  isOpen,
+  onToggle,
 }: RightSidebarProps) {
+  const [internalOpen, setInternalOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("rightSidebarOpen") === "true";
+    }
+    return false;
+  });
+
+  const open = isOpen !== undefined ? isOpen : internalOpen;
+
+  const toggle = () => {
+    if (onToggle) {
+      onToggle();
+    } else {
+      const next = !internalOpen;
+      setInternalOpen(next);
+      localStorage.setItem("rightSidebarOpen", String(next));
+    }
+  };
+
   const [showPromo, setShowPromo] = useState(true);
   const [recentBanners, setRecentBanners] = useState<RecentBanner[]>([]);
   const [loading, setLoading] = useState(true);
@@ -98,109 +116,144 @@ export default function RightSidebar({
   }, [bannersRefreshTrigger]);
 
   return (
-    <div className="w-80 bg-[#2a2a2a] border-l border-[#3a3a3a] flex flex-col">
-      {showPromo && (
-        <div className="m-4 p-4 bg-gradient-to-br from-pink-500/20 to-purple-500/20 rounded-lg border border-pink-500/30 relative">
-          <button
-            onClick={() => setShowPromo(false)}
-            className="absolute top-2 right-2 text-gray-400 hover:text-white"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="text-2xl">🎨</span>
-            <span className="font-semibold">Pro Features</span>
-          </div>
-          <p className="text-sm text-gray-300 mb-3">
-            Unlock advanced templates, higher resolution exports, and priority support.
-          </p>
-          <button className="w-full py-2 px-4 bg-gradient-to-r from-pink-500 to-purple-500 text-white rounded-lg text-sm font-medium hover:opacity-90">
-            Upgrade
-          </button>
-        </div>
-      )}
+    <div className="relative flex flex-shrink-0">
+      {/* Toggle tab */}
+      <button
+        type="button"
+        onClick={toggle}
+        aria-label={open ? "Hide recent banners" : "Show recent banners"}
+        title={open ? "Hide recent" : "Show recent"}
+        className="self-start mt-4 -mr-px z-10 flex items-center justify-center w-5 h-12 rounded-l-lg border border-white/[0.08] bg-[var(--panel-bg)] text-gray-500 hover:text-white hover:bg-white/[0.08] transition-colors"
+        style={{ backdropFilter: "blur(12px)" }}
+      >
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`transition-transform duration-200 ${open ? "rotate-0" : "rotate-180"}`}
+        >
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+      </button>
 
-      <div className="flex-1 px-4 pb-4 overflow-hidden flex flex-col min-h-0">
-        <h3 className="font-semibold text-sm mb-3">Recent Banners</h3>
-
-        {currentSlides.length > 0 && (
-          <div className="mb-3">
-            <p className="text-xs text-gray-500 mb-2">Current session ({currentSlides.length} slide{currentSlides.length !== 1 ? "s" : ""})</p>
-            <div className="flex gap-2 overflow-x-auto pb-2">
-              {currentSlides.map((slide, i) => (
-                <div
-                  key={slide.id}
-                  className="flex-shrink-0 w-20 h-20 rounded-lg border border-[#3a3a3a] overflow-hidden bg-[#1a1a1a]"
-                >
-                  {slide.imageUrl ? (
-                    <img
-                      src={slide.imageUrl}
-                      alt={`Slide ${i + 1}`}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">Slide {i + 1}</div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="space-y-2 overflow-y-auto flex-1 min-h-0">
-          {loading ? (
-            <p className="text-xs text-gray-500">Loading…</p>
-          ) : recentBanners.length === 0 ? (
-            <p className="text-xs text-gray-500">No saved banners yet. Generate or save a banner to see it here.</p>
-          ) : (
-            recentBanners.map((banner) => (
-              <div
-                key={banner.id}
-                className="w-full p-2 bg-[#1a1a1a] rounded-lg border border-[#3a3a3a] hover:border-[#4a4a4a] transition-colors"
+      {/* Panel */}
+      <div
+        className="flex flex-col border-l border-white/[0.06] overflow-hidden transition-all duration-300 ease-in-out"
+        style={{
+          width: open ? "var(--right-panel-width)" : "0px",
+          opacity: open ? 1 : 0,
+          background: "var(--panel-bg)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          pointerEvents: open ? "auto" : "none",
+        }}
+      >
+        <div className="w-[var(--right-panel-width)] flex flex-col h-full overflow-hidden">
+          {showPromo && (
+            <div className="m-3 p-4 rounded-xl border border-white/[0.08] relative overflow-hidden"
+              style={{ background: "linear-gradient(135deg, rgba(236,72,153,0.12) 0%, rgba(139,92,246,0.12) 100%)" }}>
+              <button
+                onClick={() => setShowPromo(false)}
+                className="absolute top-2.5 right-2.5 text-gray-500 hover:text-white transition-colors"
+                aria-label="Dismiss"
               >
-                <button
-                  type="button"
-                  onClick={() => onSelectBanner?.(banner.slides, banner.aspectRatio)}
-                  className="w-full text-left"
-                >
-                  <div className="w-full h-16 rounded mb-2 overflow-hidden bg-[#3a3a3a] flex items-center justify-center">
-                    {banner.firstImageUrl ? (
-                      <img
-                        src={banner.firstImageUrl}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-gray-500 text-xs">No preview</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-300 truncate font-medium">{banner.name}</p>
-                  <p className="text-xs text-gray-500">{formatTimeAgo(banner.createdAt)}</p>
-                </button>
-                <div className="flex gap-1 mt-1">
-                  <button
-                    type="button"
-                    onClick={() => onSelectBanner?.(banner.slides, banner.aspectRatio)}
-                    className="flex-1 px-2 py-1 text-xs bg-[#0066ff] text-white rounded hover:bg-[#0052cc]"
-                  >
-                    Open
-                  </button>
-                  {onUseAsTemplate && (
-                    <button
-                      type="button"
-                      onClick={() => onUseAsTemplate(banner.slides, banner.aspectRatio)}
-                      className="flex-1 px-2 py-1 text-xs bg-[#3a3a3a] text-gray-300 rounded hover:bg-[#4a4a4a]"
-                      title="Use as template"
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <p className="text-[13px] font-semibold text-white mb-1">Pro Features</p>
+              <p className="text-[12px] text-gray-400 mb-3 leading-relaxed">
+                Unlock advanced templates, higher resolution exports, and priority support.
+              </p>
+              <button className="btn-upgrade w-full justify-center py-1.5 text-[12px]">
+                Upgrade to Pro
+              </button>
+            </div>
+          )}
+
+          <div className="flex-1 px-3 pb-3 overflow-hidden flex flex-col min-h-0">
+            <h3 className="text-[13px] font-semibold text-white mb-3 mt-1 px-1">Recent Banners</h3>
+
+            {currentSlides.length > 0 && (
+              <div className="mb-3">
+                <p className="text-[11px] text-gray-500 mb-2 px-1">
+                  Session · {currentSlides.length} slide{currentSlides.length !== 1 ? "s" : ""}
+                </p>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {currentSlides.map((slide, i) => (
+                    <div
+                      key={slide.id}
+                      className="flex-shrink-0 w-16 h-12 rounded-lg border border-white/[0.08] overflow-hidden bg-white/[0.04]"
                     >
-                      Template
-                    </button>
-                  )}
+                      {slide.imageUrl ? (
+                        <img src={slide.imageUrl} alt={`Slide ${i + 1}`} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-600 text-[10px]">{i + 1}</div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))
-          )}
+            )}
+
+            <div className="space-y-2 overflow-y-auto flex-1 min-h-0 pr-0.5">
+              {loading ? (
+                <p className="text-[12px] text-gray-600 px-1">Loading…</p>
+              ) : recentBanners.length === 0 ? (
+                <p className="text-[12px] text-gray-600 px-1 leading-relaxed">
+                  No saved banners yet. Generate or save a banner to see it here.
+                </p>
+              ) : (
+                recentBanners.map((banner) => (
+                  <div
+                    key={banner.id}
+                    className="rounded-xl border border-white/[0.07] bg-white/[0.03] hover:bg-white/[0.06] hover:border-white/[0.14] transition-colors overflow-hidden"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => onSelectBanner?.(banner.slides, banner.aspectRatio)}
+                      className="w-full text-left"
+                    >
+                      <div className="w-full h-[52px] bg-white/[0.04] flex items-center justify-center overflow-hidden">
+                        {banner.firstImageUrl ? (
+                          <img src={banner.firstImageUrl} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-gray-600 text-[11px]">No preview</span>
+                        )}
+                      </div>
+                      <div className="px-3 py-2">
+                        <p className="text-[12px] text-gray-200 truncate font-medium">{banner.name}</p>
+                        <p className="text-[11px] text-gray-600">{formatTimeAgo(banner.createdAt)}</p>
+                      </div>
+                    </button>
+                    <div className="flex gap-1.5 px-3 pb-2.5">
+                      <button
+                        type="button"
+                        onClick={() => onSelectBanner?.(banner.slides, banner.aspectRatio)}
+                        className="flex-1 px-2 py-1.5 text-[11px] font-medium bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-hover)] transition-colors"
+                      >
+                        Open
+                      </button>
+                      {onUseAsTemplate && (
+                        <button
+                          type="button"
+                          onClick={() => onUseAsTemplate(banner.slides, banner.aspectRatio)}
+                          className="flex-1 px-2 py-1.5 text-[11px] font-medium bg-white/[0.07] text-gray-300 rounded-lg hover:bg-white/[0.12] transition-colors"
+                        >
+                          Copy
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>

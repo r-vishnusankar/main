@@ -97,3 +97,52 @@ export async function generateImageFromImage(
 
   throw new Error("No image in response");
 }
+
+const VISION_MODEL = process.env.GEMINI_VISION_MODEL || "gemini-2.0-flash";
+
+/**
+ * Analyze an image and return a text description (vision: image in, text out).
+ * Used for generating social captions, alt text, and blog descriptions.
+ * Does not use responseModalities; default text-only response.
+ */
+export async function describeImage(
+  apiKey: string,
+  imageBase64: string,
+  imageMimeType: string,
+  prompt: string
+): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: VISION_MODEL,
+    contents: [
+      {
+        role: "user",
+        parts: [
+          { inlineData: { mimeType: imageMimeType, data: imageBase64 } },
+          { text: prompt },
+        ],
+      },
+    ],
+  });
+
+  const candidates = response.candidates;
+  if (!candidates?.length) {
+    const feedback = (response as { promptFeedback?: { blockReason?: string } }).promptFeedback;
+    const reason = feedback?.blockReason ? ` (${feedback.blockReason})` : "";
+    throw new Error(`No response from Gemini${reason}. Check your API key and quota.`);
+  }
+
+  const parts = candidates[0].content?.parts ?? [];
+  const textPart = parts.find((p): p is { text: string } => "text" in p && typeof (p as { text?: string }).text === "string");
+  if (textPart?.text) {
+    return textPart.text.trim();
+  }
+
+  const responseText = (response as { text?: () => string }).text;
+  if (typeof responseText === "function") {
+    const out = responseText.call(response);
+    if (out && typeof out === "string") return out.trim();
+  }
+
+  throw new Error("No text in response");
+}

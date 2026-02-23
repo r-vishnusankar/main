@@ -24,6 +24,7 @@ import {
 import { buildImageToImagePrompt } from "@/lib/imagePrompt";
 import { getBrandPromptSuffix } from "@/lib/brandKit";
 import { getFavoriteIds, toggleFavorite } from "@/lib/favorites";
+import { getAspectRatioClass } from "@/lib/aspectRatioClass";
 
 interface StoredBanner {
   id: string;
@@ -569,11 +570,11 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
   };
 
   return (
-      <div className="p-8 max-w-7xl mx-auto">
+      <div className="w-full min-w-0 px-8 py-10">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-4xl font-bold mb-2">Banners & Assets</h1>
-          <p className="text-gray-400">
+          <h1 className="text-[22px] font-semibold text-white mb-2">Banners & Assets</h1>
+          <p className="text-gray-400 text-[15px]">
             Manage your created banners and uploaded image assets
             {storageInfo && (
               <span className="ml-2 text-xs">
@@ -618,15 +619,13 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
             ) : null;
           })()}
           {banners.length === 0 ? (
-            <div className="p-12 bg-[#2a2a2a] rounded-xl border border-[#3a3a3a] text-center">
-            <span className="text-5xl mb-4 block">📁</span>
-            <h3 className="text-xl font-semibold mb-2">No banners yet</h3>
-            <p className="text-gray-400 mb-4">
-              Generated images are automatically saved as banners. Create your first banner to see it here.
+            <div className="p-12 rounded-xl border border-white/[0.1] card-glass text-center">
+            <span className="text-4xl mb-4 block" aria-hidden="true">📁</span>
+            <h3 className="text-lg font-semibold text-white mb-2">No banners yet</h3>
+            <p className="text-gray-400 text-sm mb-2">
+              Create a banner from Create or Product banner. It will appear here and in Gallery.
             </p>
-            <p className="text-sm text-gray-500 mt-2">
-              💡 Tip: All generated images are also saved in the Assets tab
-            </p>
+            <p className="text-xs text-gray-500">Generated images are also in the Assets tab.</p>
           </div>
           ) : (
             <>
@@ -663,10 +662,10 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
               {filteredBanners.map((banner) => (
                 <div
                   key={banner.id}
-                  className="bg-[#2a2a2a] rounded-xl border border-[#3a3a3a] overflow-hidden hover:border-[#4a4a4a] transition-colors"
+                  className="rounded-xl border border-white/[0.1] card-glass overflow-hidden hover:border-white/20 transition-colors"
                 >
                   {banner.slides[0] && (
-                    <div className="aspect-video bg-[#1a1a1a] relative overflow-hidden">
+                    <div className={`${getAspectRatioClass(banner.aspectRatio)} bg-[var(--background)] relative overflow-hidden`}>
                       <img
                         src={banner.slides[0].imageUrl}
                         alt={banner.name || "Banner"}
