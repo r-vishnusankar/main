@@ -266,8 +266,8 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
       
       onAddSlide(slide);
       
-      // For workflow 1 (generate image), automatically save as banner
-      if (workflow === "generate" && onSaveBanner) {
+      // Save banner and trigger gallery refresh for generate and product-banner workflows
+      if ((workflow === "generate" || workflow === "product") && onSaveBanner) {
         onSaveBanner([slide], aspectRatio, purposeToSave);
       }
       
@@ -401,7 +401,12 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
         console.warn("Failed to save banner image to assets:", err);
       }
 
-      onAddSlide({ id: generateId(), imageUrl, prompt: trimmed || undefined });
+      const productSlide = { id: generateId(), imageUrl, prompt: trimmed || undefined };
+      onAddSlide(productSlide);
+      // Save banner and trigger gallery refresh
+      if (onSaveBanner) {
+        onSaveBanner([productSlide], aspectRatio);
+      }
       setBannerInstructions("");
       setProductFile(null);
     } catch (err) {

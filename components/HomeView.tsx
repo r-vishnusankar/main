@@ -3,7 +3,7 @@
 import PreviewImage from "@/components/PreviewImage";
 
 interface HomeViewProps {
-  onNavigate?: (navId: "create" | "banners" | "templates" | "help" | "gallery" | "content-publish" | "product-banner" | "home") => void;
+  onNavigate?: (navId: "create" | "banners" | "templates" | "help" | "gallery" | "content-publish" | "home") => void;
 }
 
 /* ── SVG Icons ─────────────────────────────────────────── */
@@ -339,7 +339,7 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
               overlaySub: "Celebrate with savings",
             },
             {
-              id: "product-banner" as const,
+              id: "templates" as const,
               slot: "product-banner",
               label: "Product Banner",
               desc: "Combine your product image with AI-styled backgrounds and copy.",

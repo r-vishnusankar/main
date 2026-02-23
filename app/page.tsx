@@ -30,7 +30,7 @@ const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
   { value: "1:1", label: "1:1" },
 ];
 
-const VALID_NAV_IDS: NavItemId[] = ["home", "create", "product-banner", "banners", "gallery", "templates", "content-publish", "help"];
+const VALID_NAV_IDS: NavItemId[] = ["home", "create", "banners", "gallery", "templates", "content-publish", "help"];
 
 export default function EditorPage() {
   const searchParams = useSearchParams();
@@ -318,42 +318,6 @@ export default function EditorPage() {
             />
           )}
 
-          {activeNav === "product-banner" && (
-            <div className="w-full min-w-0 px-8 py-10">
-              <h1 className="heading-page mb-2">Banner from product image</h1>
-              <p className="text-gray-400 text-[15px] mb-6">Choose a template, add your product image, and describe the banner. You&apos;ll go to the editor after creating.</p>
-              <div className="mb-8">
-                <h2 className="heading-section mb-4">1. Choose a template</h2>
-                <TemplateGallery
-                  selectedTemplateId={selectedTemplateId}
-                  onSelectTemplate={(templateId, ratio, promptHint) => {
-                    setSelectedTemplateId(templateId);
-                    setAspectRatio(ratio);
-                    setSuggestedPrompt(promptHint);
-                  }}
-                />
-              </div>
-              <div className="p-6 rounded-xl border border-white/[0.08] card-glass">
-                <h2 className="heading-section mb-4">2. Add product image and instructions</h2>
-                <p className="text-[14px] text-gray-400 mb-1">
-                  Upload your product image and describe how the banner should look. The template&apos;s suggested style is pre-filled—edit as needed.
-                </p>
-                <p className="text-[13px] text-gray-500 mb-4">Creating at <span className="text-gray-300 font-medium">{aspectRatio}</span> aspect ratio</p>
-                  <ImageSourcePanel
-                    aspectRatio={aspectRatio}
-                    onAddSlide={(slide) => {
-                      setSlides((prev) => [...prev, slide]);
-                      setActiveNav("create");
-                      setActiveTab("editor");
-                    }}
-                    suggestedPrompt={suggestedPrompt}
-                    workflow="product"
-                    campaignPurposeType={campaignPurposeType}
-                    campaignText={campaignPurposeType === "event" ? (selectedEvent?.name ?? productName) : productName}
-                  />
-              </div>
-            </div>
-          )}
 
           {activeNav === "templates" && (
             <div className="w-full min-w-0 px-8 py-10">
@@ -530,6 +494,7 @@ export default function EditorPage() {
                     productName={productName}
                     selectedEvent={selectedEvent}
                     onSelectEvent={setSelectedEvent}
+                    brandPromptSuffix={brandPromptSuffix}
                   />
                 </div>
 

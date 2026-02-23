@@ -1,6 +1,6 @@
 "use client";
 
-export type NavItemId = "home" | "create" | "product-banner" | "banners" | "gallery" | "templates" | "content-publish" | "help";
+export type NavItemId = "home" | "create" | "banners" | "gallery" | "templates" | "content-publish" | "help";
 
 interface NavItem {
   id: NavItemId;
@@ -26,17 +26,6 @@ function IconSparkles() {
   );
 }
 
-function IconImagePlus() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-      <circle cx="8.5" cy="8.5" r="1.5" />
-      <polyline points="21 15 16 10 5 21" />
-      <line x1="16" y1="5" x2="16" y2="11" />
-      <line x1="13" y1="8" x2="19" y2="8" />
-    </svg>
-  );
-}
 
 function IconFolder() {
   return (
@@ -89,10 +78,9 @@ function IconHelp() {
 const navItems: NavItem[] = [
   { id: "home", label: "Home", icon: <IconHome /> },
   { id: "create", label: "Create", icon: <IconSparkles /> },
-  { id: "product-banner", label: "Product", icon: <IconImagePlus /> },
+  { id: "templates", label: "Templates", icon: <IconLayout /> },
   { id: "banners", label: "Banners", icon: <IconFolder /> },
   { id: "gallery", label: "Gallery", icon: <IconGallery /> },
-  { id: "templates", label: "Templates", icon: <IconLayout /> },
   { id: "content-publish", label: "Publish", icon: <IconSend /> },
   { id: "help", label: "Help", icon: <IconHelp /> },
 ];
