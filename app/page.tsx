@@ -662,13 +662,14 @@ export default function EditorPage() {
               )}
             </div>
             ) : (
-            <div className="w-full min-w-0 px-6 sm:px-8 py-8 max-w-6xl">
+            <div className="w-full min-w-0 px-8 py-10">
+              {/* Header row */}
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h2 className="heading-page">Banner Editor</h2>
                   {slides.length > 0 && (
                     <p className="text-[14px] text-gray-400 mt-1">
-                      {slides.length} {slides.length === 1 ? "slide" : "slides"} · All images are saved in Assets
+                      {slides.length} {slides.length === 1 ? "slide" : "slides"}
                     </p>
                   )}
                 </div>
@@ -680,20 +681,20 @@ export default function EditorPage() {
                     }}
                     className="btn-primary"
                   >
-                    Add slide from AI
+                    + Add slide from AI
                   </button>
                   <button
                     onClick={() => setActiveTab("create")}
                     className="btn-secondary"
                   >
-                    Back to Create
+                    ← Back to Create
                   </button>
                 </div>
               </div>
 
               {selectedEvent && (
-                <div className="flex items-center justify-between gap-2 mb-4 p-3 rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/25">
-                  <span className="text-[14px] text-gray-300">Using event: {selectedEvent.name}</span>
+                <div className="flex items-center justify-between gap-2 mb-6 p-3 rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/25">
+                  <span className="text-[14px] text-gray-300">Using event: <span className="text-white font-medium">{selectedEvent.name}</span></span>
                   <button
                     type="button"
                     onClick={() => setSelectedEvent(null)}
@@ -704,45 +705,46 @@ export default function EditorPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                  <div className="rounded-xl border border-white/[0.08] card-glass p-6">
-                    {slides.length > 0 && (
-                      <div className="mb-4 p-3 rounded-xl bg-[var(--accent)]/[0.07] border border-[var(--accent)]/20">
-                        <p className="text-[13px] text-gray-400">
-                          <strong className="text-gray-200">Tip:</strong> All images are saved in{" "}
-                          <button
-                            onClick={() => setActiveNav("banners")}
-                            className="text-[var(--accent)] hover:underline"
-                          >
-                            Assets
-                          </button>
-                          . Use &ldquo;Add slide from AI&rdquo; to generate more slides.
-                        </p>
-                      </div>
-                    )}
-                    <BannerCarousel
-                      slides={slides}
-                      aspectRatio={aspectRatio}
-                      autoplay={autoplay}
-                      autoplaySpeed={autoplaySpeed}
-                      onRemoveSlide={removeSlide}
-                      onReorderSlides={reorderSlides}
-                      onUpdateSlide={updateSlide}
-                      onRegenerateSlide={handleRegenerateSlide}
-                      editable
-                    />
-                  </div>
+              {/* Two-column editor layout — carousel takes 2/3, export panel 1/3 */}
+              <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
+                {/* Carousel / slides area */}
+                <div className="rounded-xl border border-white/[0.08] card-glass p-6 min-w-0">
+                  {slides.length > 0 && (
+                    <div className="mb-4 p-3 rounded-xl bg-[var(--accent)]/[0.07] border border-[var(--accent)]/20">
+                      <p className="text-[13px] text-gray-400">
+                        <strong className="text-gray-200">Tip:</strong> Generated images are saved to{" "}
+                        <button
+                          onClick={() => setActiveNav("gallery")}
+                          className="text-[var(--accent)] hover:underline"
+                        >
+                          Gallery
+                        </button>
+                        . Use &ldquo;Add slide from AI&rdquo; to add more slides.
+                      </p>
+                    </div>
+                  )}
+                  <BannerCarousel
+                    slides={slides}
+                    aspectRatio={aspectRatio}
+                    autoplay={autoplay}
+                    autoplaySpeed={autoplaySpeed}
+                    onRemoveSlide={removeSlide}
+                    onReorderSlides={reorderSlides}
+                    onUpdateSlide={updateSlide}
+                    onRegenerateSlide={handleRegenerateSlide}
+                    editable
+                  />
                 </div>
 
-                <div className="space-y-4">
+                {/* Export / settings sidebar */}
+                <div className="space-y-4 flex-shrink-0">
                   <ExportPanel
                     slides={slides}
                     aspectRatio={aspectRatio}
                     autoplay={autoplay}
                     autoplaySpeed={autoplaySpeed}
                     onSaveBanner={() => {
-                      // Optionally refresh banners view or show notification
+                      setBannersRefreshTrigger((n) => n + 1);
                     }}
                   />
                 </div>
