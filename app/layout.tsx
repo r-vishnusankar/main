@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "Creator Banner Creator",
+  title: "Pixmerce.ai",
   description: "Create banner carousels from uploads or AI-generated images. Region-based calendar for celebrations.",
 };
 

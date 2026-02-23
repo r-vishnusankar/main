@@ -49,6 +49,9 @@ export default function EditorPage() {
     const view = searchParams?.get("view");
     if (view && VALID_NAV_IDS.includes(view as NavItemId)) {
       setActiveNavState(view as NavItemId);
+      if (view !== "home") {
+        setLeftSidebarVisible(true);
+      }
     }
     isInitialMount.current = false;
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- only on mount
@@ -71,6 +74,7 @@ export default function EditorPage() {
   const [batchProgress, setBatchProgress] = useState("");
   const [batchError, setBatchError] = useState<string | null>(null);
   const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+  const [leftSidebarVisible, setLeftSidebarVisible] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("rightSidebarOpen");
@@ -80,6 +84,12 @@ export default function EditorPage() {
   useEffect(() => {
     setBrandPromptSuffix(getBrandKit().brandPromptSuffix ?? "");
   }, []);
+
+  useEffect(() => {
+    if (activeNav !== "home") {
+      setLeftSidebarVisible(true);
+    }
+  }, [activeNav]);
 
   const addSlide = (slide: Slide, source?: "upload" | "generate") => {
     setSlides((prev) => [...prev, slide]);
@@ -190,10 +200,25 @@ export default function EditorPage() {
   };
 
   const handleNavChange = (id: NavItemId) => {
-    setActiveNav(id);
-    if (id === "create") {
-      setActiveTab("create");
+    if (id === "home") {
+      setActiveNav(id);
+      setLeftSidebarVisible(false);
+    } else {
+      setLeftSidebarVisible(true);
+      setActiveNav(id);
+      if (id === "create") {
+        setActiveTab("create");
+      }
     }
+  };
+
+  const handleOpenCreate = () => {
+    setLeftSidebarVisible(true);
+    setActiveNav("create");
+    setActiveTab("create");
+    const params = new URLSearchParams(searchParams?.toString() ?? "");
+    params.set("view", "create");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   const removeSlide = (index: number) => {
@@ -288,16 +313,21 @@ export default function EditorPage() {
   return (
     <div className="h-screen flex flex-col text-white overflow-hidden" style={{ background: "var(--background)" }}>
       <TopNav
-        onToggleRecent={() => {
-          const next = !rightSidebarOpen;
-          setRightSidebarOpen(next);
-          localStorage.setItem("rightSidebarOpen", String(next));
-        }}
+        onToggleRecent={
+          leftSidebarVisible
+            ? () => {
+                const next = !rightSidebarOpen;
+                setRightSidebarOpen(next);
+                localStorage.setItem("rightSidebarOpen", String(next));
+              }
+            : undefined
+        }
         recentOpen={rightSidebarOpen}
+        onOpenCreate={!leftSidebarVisible ? handleOpenCreate : undefined}
       />
       <div className="flex-1 flex overflow-hidden min-w-0">
-        <LeftSidebar activeId={activeNav} onNavChange={handleNavChange} />
-        
+        {leftSidebarVisible && <LeftSidebar activeId={activeNav} onNavChange={handleNavChange} />}
+
         <main className="flex-1 overflow-y-auto min-w-0">
           {activeNav === "home" && <HomeView onNavigate={handleNavChange} />}
           
@@ -755,18 +785,20 @@ export default function EditorPage() {
           )}
         </main>
 
-        <RightSidebar
-          currentSlides={slides}
-          onSelectBanner={handleSelectBanner}
-          onUseAsTemplate={handleUseAsTemplate}
-          bannersRefreshTrigger={bannersRefreshTrigger}
-          isOpen={rightSidebarOpen}
-          onToggle={() => {
-            const next = !rightSidebarOpen;
-            setRightSidebarOpen(next);
-            localStorage.setItem("rightSidebarOpen", String(next));
-          }}
-        />
+        {activeNav !== "home" && (
+          <RightSidebar
+            currentSlides={slides}
+            onSelectBanner={handleSelectBanner}
+            onUseAsTemplate={handleUseAsTemplate}
+            bannersRefreshTrigger={bannersRefreshTrigger}
+            isOpen={rightSidebarOpen}
+            onToggle={() => {
+              const next = !rightSidebarOpen;
+              setRightSidebarOpen(next);
+              localStorage.setItem("rightSidebarOpen", String(next));
+            }}
+          />
+        )}
       </div>
     </div>
   );

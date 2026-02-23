@@ -3,55 +3,73 @@
 interface TopNavProps {
   onToggleRecent?: () => void;
   recentOpen?: boolean;
+  onOpenCreate?: () => void;
 }
 
-export default function TopNav({ onToggleRecent, recentOpen }: TopNavProps) {
+function IconChevronDown() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+
+export default function TopNav({ onToggleRecent, recentOpen, onOpenCreate }: TopNavProps) {
+  const isPureHome = !!onOpenCreate;
+
   return (
     <header
-      className="h-12 flex-shrink-0 flex items-center justify-between px-4 border-b border-white/[0.06]"
+      className="relative h-14 flex-shrink-0 flex items-center justify-between px-6 border-b border-white/[0.06]"
       style={{
         background: "var(--topbar-bg)",
         backdropFilter: "blur(24px)",
         WebkitBackdropFilter: "blur(24px)",
       }}
     >
-      {/* Left: Logo + nav links */}
-      <div className="flex items-center gap-4">
-        {/* Logo */}
-        <div className="flex items-center gap-2 select-none">
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
-            style={{ background: "var(--gradient-btn)" }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </div>
-          <span className="text-[15px] font-bold text-white tracking-tight leading-none">
-            Creator<span className="text-gradient font-black">AI</span>
-          </span>
+      {/* Left: Logo */}
+      <div className="flex items-center gap-2 select-none flex-shrink-0">
+        <div
+          className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+          style={{ background: "var(--gradient-btn)" }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 5v14M5 12h14" />
+          </svg>
         </div>
-
-        {/* Nav pills */}
-        <nav className="hidden md:flex items-center gap-0.5">
-          {["Create", "Templates", "Help"].map((item) => (
-            <button
-              key={item}
-              type="button"
-              className="px-3 py-1.5 text-[13px] font-medium text-gray-400 hover:text-white hover:bg-white/[0.07] rounded-lg transition-colors"
-            >
-              {item}
-            </button>
-          ))}
-        </nav>
+        <span className="text-[16px] font-bold text-white tracking-tight leading-none">
+          Pixmerce<span className="text-gradient font-black">.ai</span>
+        </span>
       </div>
 
+      {/* Center: Nav links (pure home mode only) */}
+      {isPureHome && (
+        <nav className="hidden lg:flex items-center gap-8 absolute left-1/2 -translate-x-1/2">
+          <button type="button" className="flex items-center gap-1 text-[14px] font-medium text-gray-300 hover:text-white transition-colors">
+            Features
+            <IconChevronDown />
+          </button>
+          <button type="button" className="text-[14px] font-medium text-gray-300 hover:text-white transition-colors">
+            Pricing
+          </button>
+          <button type="button" className="text-[14px] font-medium text-gray-300 hover:text-white transition-colors">
+            Enterprise
+          </button>
+          <button type="button" className="text-[14px] font-medium text-gray-300 hover:text-white transition-colors">
+            Community Gallery
+          </button>
+          <button type="button" className="flex items-center gap-1 text-[14px] font-medium text-gray-300 hover:text-white transition-colors">
+            Resources
+            <IconChevronDown />
+          </button>
+        </nav>
+      )}
+
       {/* Right: actions */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2 ml-auto">
         {/* Search */}
         <button
           type="button"
-          className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.07] transition-colors"
+          className="p-2.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/[0.07] transition-colors"
           aria-label="Search"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -62,7 +80,7 @@ export default function TopNav({ onToggleRecent, recentOpen }: TopNavProps) {
         {/* Notifications */}
         <button
           type="button"
-          className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.07] transition-colors"
+          className="p-2.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/[0.07] transition-colors"
           aria-label="Notifications"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -70,16 +88,16 @@ export default function TopNav({ onToggleRecent, recentOpen }: TopNavProps) {
           </svg>
         </button>
 
-        {/* Recent banners toggle */}
+        {/* Recent banners toggle (app mode only) */}
         {onToggleRecent && (
           <button
             type="button"
             onClick={onToggleRecent}
             aria-label={recentOpen ? "Hide recent banners" : "Show recent banners"}
-            className={`p-2 rounded-lg transition-colors ${
+            className={`p-2.5 rounded-lg transition-colors ${
               recentOpen
                 ? "text-[var(--accent)] bg-[var(--accent)]/10"
-                : "text-gray-500 hover:text-white hover:bg-white/[0.07]"
+                : "text-gray-400 hover:text-white hover:bg-white/[0.07]"
             }`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -88,8 +106,19 @@ export default function TopNav({ onToggleRecent, recentOpen }: TopNavProps) {
           </button>
         )}
 
+        {/* Primary CTA: "Try our AI for free" (pure home) - navigates to Create */}
+        {onOpenCreate && (
+          <button
+            type="button"
+            onClick={onOpenCreate}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 text-[14px] font-semibold text-white rounded-lg border border-white/20 bg-transparent hover:bg-white/[0.08] hover:border-white/30 transition-all ml-2"
+          >
+            Try our AI for free
+          </button>
+        )}
+
         {/* Upgrade pill */}
-        <button type="button" className="btn-upgrade ml-1">
+        <button type="button" className="btn-upgrade ml-2">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12 2l2.9 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l7.1-1.01L12 2z" />
           </svg>
@@ -97,8 +126,10 @@ export default function TopNav({ onToggleRecent, recentOpen }: TopNavProps) {
         </button>
 
         {/* Avatar */}
-        <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-[12px] font-bold ml-1 flex-shrink-0"
-          style={{ background: "var(--gradient-btn)" }}>
+        <div
+          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-[13px] font-bold ml-2 flex-shrink-0"
+          style={{ background: "var(--gradient-btn)" }}
+        >
           U
         </div>
       </div>
