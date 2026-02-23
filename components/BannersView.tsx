@@ -43,6 +43,8 @@ interface StoredAsset {
   uploadedAt: string;
   file?: File;
   imagePurpose?: ImagePurpose;
+  prompt?: string;
+  type?: "upload" | "generated";
 }
 
 interface BannersViewProps {
@@ -193,6 +195,8 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
       ? assets
       : assets.filter((a) => a.imagePurpose === assetsFilterPurpose)
   )
+    // Show only uploaded images in Assets section; generated images appear in Gallery
+    .filter((a) => a.type === "upload" || (!a.type && !a.prompt))
     .filter((a) => !showFavoritesOnly || favoriteIds.has(a.id))
     .filter((a) => !qA || (a.name || "").toLowerCase().includes(qA));
 
@@ -311,6 +315,7 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
         imageUrl,
         name: file.name,
         uploadedAt: new Date().toISOString(),
+        type: "upload",
       };
 
       setUploadProgress(80);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { getAllAssets, getAllBanners, openDB } from "@/lib/indexedDB";
 import type { Slide, AspectRatio } from "@/types/banner";
 import type { StoredAssetRecord, StoredBannerRecord } from "@/lib/indexedDB";
@@ -33,7 +33,7 @@ const VALID_ASPECT_RATIOS: AspectRatio[] = ["16:9", "3:1", "4:1", "1:1"];
 export default function GalleryView({ onSelectForEdit, onAddToEditor, refreshTrigger = 0 }: GalleryViewProps) {
   const [items, setItems] = useState<GalleryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [viewItem, setViewItem] = useState<GalleryItem | null>(null);
+  const [viewIndex, setViewIndex] = useState<number | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -74,6 +74,9 @@ export default function GalleryView({ onSelectForEdit, onAddToEditor, refreshTri
 
         for (const a of assets || []) {
           if (!a.imageUrl) continue;
+          // Show only AI-generated images in Gallery; uploads go to Assets section
+          const isGenerated = a.type === "generated" || (!a.type && !!a.prompt);
+          if (!isGenerated) continue;
           galleryItems.push({
             id: a.id,
             imageUrl: a.imageUrl,
@@ -157,6 +160,42 @@ export default function GalleryView({ onSelectForEdit, onAddToEditor, refreshTri
       [i.title, i.prompt].some((t) => t && String(t).toLowerCase().includes(searchQuery.trim().toLowerCase()))
   );
 
+  const viewItem = viewIndex !== null ? displayItems[viewIndex] ?? null : null;
+
+  const openViewer = useCallback((idx: number) => setViewIndex(idx), []);
+  const closeViewer = useCallback(() => setViewIndex(null), []);
+  const prevImage = useCallback(() =>
+    setViewIndex((i) => (i !== null && i > 0 ? i - 1 : displayItems.length - 1)), [displayItems.length]);
+  const nextImage = useCallback(() =>
+    setViewIndex((i) => (i !== null && i < displayItems.length - 1 ? i + 1 : 0)), [displayItems.length]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (viewIndex === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeViewer();
+      else if (e.key === "ArrowLeft") prevImage();
+      else if (e.key === "ArrowRight") nextImage();
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [viewIndex, closeViewer, prevImage, nextImage]);
+
+  // Touch swipe tracking
+  const touchStartX = useRef<number | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => { touchStartX.current = e.touches[0].clientX; };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartX.current === null) return;
+    const delta = e.changedTouches[0].clientX - touchStartX.current;
+    touchStartX.current = null;
+    if (Math.abs(delta) < 40) return;
+    if (delta < 0) nextImage(); else prevImage();
+  };
+
   if (loading) {
     return (
       <div className="w-full min-w-0 px-8 py-12 flex items-center justify-center text-gray-400">
@@ -236,7 +275,7 @@ export default function GalleryView({ onSelectForEdit, onAddToEditor, refreshTri
               <div className="absolute inset-0 bg-black/40 flex items-center justify-center gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setViewItem(item); }}
+                  onClick={(e) => { e.stopPropagation(); openViewer(displayItems.indexOf(item)); }}
                   className="p-2.5 rounded-full bg-white/90 hover:bg-white text-[#1a1a1a] transition-colors"
                   title="View"
                 >
@@ -296,65 +335,103 @@ export default function GalleryView({ onSelectForEdit, onAddToEditor, refreshTri
         ))}
       </div>
 
-      {/* View popup */}
-      {viewItem && (
+      {/* View popup — fullscreen lightbox with prev/next navigation */}
+      {viewItem && viewIndex !== null && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70"
-          onClick={() => setViewItem(null)}
+          className="fixed inset-0 z-50 flex flex-col bg-black/95"
+          onClick={closeViewer}
           role="dialog"
           aria-modal="true"
           aria-label="View image"
         >
+          {/* Top bar */}
           <div
-            className="bg-[#2a2a2a] rounded-xl border border-[#3a3a3a] max-w-4xl w-full max-h-[90vh] overflow-hidden shadow-xl flex flex-col"
+            className="flex-shrink-0 flex items-center justify-between px-6 py-3 bg-black/60 backdrop-blur-md border-b border-white/10"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-4 border-b border-[#3a3a3a] flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white truncate pr-4">{viewItem.title}</h3>
-              <button
-                type="button"
-                onClick={() => setViewItem(null)}
-                className="p-2 rounded-lg hover:bg-[#3a3a3a] text-gray-400 hover:text-white transition-colors"
-                aria-label="Close"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+            <div className="flex items-center gap-3 min-w-0">
+              <h3 className="text-base font-semibold text-white truncate">{viewItem.title}</h3>
+              <span className="flex-shrink-0 text-xs text-gray-500">{viewIndex + 1} / {displayItems.length}</span>
             </div>
-            <div className="flex-1 overflow-auto p-4 flex flex-col md:flex-row gap-4">
-              <div className="flex-shrink-0 md:max-w-[70%] flex justify-center bg-[#1a1a1a] rounded-lg overflow-hidden">
-                <img
-                  src={viewItem.imageUrl}
-                  alt={viewItem.title}
-                  className="max-h-[60vh] w-auto object-contain"
-                />
-              </div>
-              <div className="flex flex-col gap-2 min-w-0">
-                {viewItem.prompt && (
-                  <div>
-                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Prompt</span>
-                    <p className="text-sm text-gray-300 mt-1 break-words">{viewItem.prompt}</p>
-                  </div>
-                )}
-                {viewItem.aspectRatio && (
-                  <div>
-                    <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Resolution</span>
-                    <p className="text-sm text-gray-300 mt-1">{viewItem.aspectRatio}</p>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => { handleSelect(viewItem); setViewItem(null); }}
-                  className="mt-2 px-4 py-2 rounded-lg bg-[#0066ff] hover:bg-[#0052cc] text-white text-sm font-medium flex items-center justify-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  Open in editor
-                </button>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={closeViewer}
+              className="p-2 rounded-lg hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+              aria-label="Close"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Image area with swipe support */}
+          <div
+            className="flex-1 flex items-center justify-center min-h-0 relative"
+            onClick={closeViewer}
+            onTouchStart={onTouchStart}
+            onTouchEnd={onTouchEnd}
+          >
+            {/* Prev arrow */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); prevImage(); }}
+              className="absolute left-4 z-10 p-3 rounded-full bg-black/50 hover:bg-black/80 text-white border border-white/10 transition-all hover:scale-110"
+              aria-label="Previous image"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={viewItem.imageUrl}
+              alt={viewItem.title}
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl select-none"
+              style={{ maxHeight: "calc(100vh - 140px)", padding: "24px 80px" }}
+              onClick={(e) => e.stopPropagation()}
+              draggable={false}
+            />
+
+            {/* Next arrow */}
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); nextImage(); }}
+              className="absolute right-4 z-10 p-3 rounded-full bg-black/50 hover:bg-black/80 text-white border border-white/10 transition-all hover:scale-110"
+              aria-label="Next image"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Bottom info bar */}
+          <div
+            className="flex-shrink-0 flex flex-wrap items-center gap-4 px-6 py-3 bg-black/60 backdrop-blur-md border-t border-white/10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {viewItem.aspectRatio && (
+              <span className="text-xs text-gray-400 bg-white/10 px-2 py-1 rounded">
+                {viewItem.aspectRatio}
+              </span>
+            )}
+            {viewItem.prompt && (
+              <p className="flex-1 text-sm text-gray-300 truncate min-w-0" title={viewItem.prompt}>
+                <span className="text-gray-500 mr-1">Prompt:</span>{viewItem.prompt}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => { handleSelect(viewItem); closeViewer(); }}
+              className="ml-auto flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0066ff] hover:bg-[#0052cc] text-white text-sm font-medium transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Open in editor
+            </button>
           </div>
         </div>
       )}

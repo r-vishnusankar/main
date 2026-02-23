@@ -358,14 +358,41 @@ export default function EditorPage() {
           {activeNav === "templates" && (
             <div className="w-full min-w-0 px-8 py-10">
               <h1 className="heading-page mb-2">Templates</h1>
-              <p className="text-gray-400 text-[15px] mb-6">Choose a template to get started.</p>
+              <p className="text-gray-400 text-[15px] mb-6">Click any template to start creating with it.</p>
               <TemplateGallery
                 selectedTemplateId={selectedTemplateId}
                 onSelectTemplate={(templateId, ratio, promptHint) => {
                   setSelectedTemplateId(templateId);
                   setAspectRatio(ratio);
                   setSuggestedPrompt(promptHint);
-                  setActiveNav("create"); // Switch to create tab after selecting template
+                  setActiveNav("create");
+                }}
+                onAddSlide={(slide, source) => {
+                  addSlide(slide, source);
+                  if (source === "generate") setActiveTab("editor");
+                }}
+                onSaveBanner={async (bannerSlides, bannerAspectRatio, imagePurpose) => {
+                  try {
+                    const { saveBanner, openDB } = await import("@/lib/indexedDB");
+                    const useIndexedDB = await openDB().then(() => true).catch(() => false);
+                    const newBanner = {
+                      id: `banner-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                      slides: bannerSlides,
+                      aspectRatio: bannerAspectRatio,
+                      createdAt: new Date().toISOString(),
+                      name: `Template: ${new Date().toLocaleDateString()}`,
+                      ...(imagePurpose && { imagePurpose }),
+                    };
+                    if (useIndexedDB) {
+                      await saveBanner(newBanner);
+                    } else {
+                      const stored = localStorage.getItem("savedBanners");
+                      const banners = stored ? JSON.parse(stored) : [];
+                      banners.push(newBanner);
+                      localStorage.setItem("savedBanners", JSON.stringify(banners));
+                    }
+                    setBannersRefreshTrigger((n) => n + 1);
+                  } catch { /* ignore */ }
                 }}
               />
             </div>

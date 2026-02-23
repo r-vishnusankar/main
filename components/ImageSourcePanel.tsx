@@ -128,6 +128,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             imageUrl,
             name: file.name,
             uploadedAt: new Date().toISOString(),
+            type: "upload",
           });
         } else {
           // Fallback to localStorage
@@ -138,6 +139,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             imageUrl,
             name: file.name,
             uploadedAt: new Date().toISOString(),
+            type: "upload",
           });
           localStorage.setItem("savedAssets", JSON.stringify(assets));
         }
@@ -221,7 +223,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
       // Resize to selected aspect ratio so the slide matches the banner
       imageUrl = await resizeDataUrlToAspect(imageUrl, aspectRatio);
 
-      // Save to assets automatically (include imagePurpose when in generate workflow)
+      // Save generated image to assets with type:"generated"
       const purposeToSave = workflow === "generate" ? imagePurpose : undefined;
       try {
         const useIndexedDB = await openDB().then(() => true).catch(() => false);
@@ -231,6 +233,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             imageUrl,
             name: `Generated: ${trimmed.substring(0, 30)}${trimmed.length > 30 ? "..." : ""}`,
             uploadedAt: new Date().toISOString(),
+            type: "generated",
             ...(purposeToSave && { imagePurpose: purposeToSave }),
             prompt: trimmed || undefined,
             aspectRatio,
@@ -244,6 +247,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             imageUrl,
             name: `Generated: ${trimmed.substring(0, 30)}${trimmed.length > 30 ? "..." : ""}`,
             uploadedAt: new Date().toISOString(),
+            type: "generated",
             ...(purposeToSave && { imagePurpose: purposeToSave }),
             prompt: trimmed || undefined,
             aspectRatio,
@@ -365,7 +369,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
       // Resize to selected template aspect ratio so the banner matches the chosen template
       imageUrl = await resizeDataUrlToAspect(imageUrl, aspectRatio);
 
-      // Save to assets automatically
+      // Save product banner as generated image
       try {
         const useIndexedDB = await openDB().then(() => true).catch(() => false);
         if (useIndexedDB) {
@@ -374,6 +378,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             imageUrl,
             name: `Banner: ${trimmed.substring(0, 30)}${trimmed.length > 30 ? "..." : ""}`,
             uploadedAt: new Date().toISOString(),
+            type: "generated",
             prompt: trimmed || undefined,
             aspectRatio,
           });
@@ -386,6 +391,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             imageUrl,
             name: `Banner: ${trimmed.substring(0, 30)}${trimmed.length > 30 ? "..." : ""}`,
             uploadedAt: new Date().toISOString(),
+            type: "generated",
             prompt: trimmed || undefined,
             aspectRatio,
           });

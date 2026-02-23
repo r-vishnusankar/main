@@ -60,6 +60,8 @@ export interface StoredAssetRecord {
   prompt?: string;
   /** Aspect ratio used (e.g. "16:9") for gallery and rework. */
   aspectRatio?: string;
+  /** Whether this was manually uploaded or AI-generated. */
+  type?: "upload" | "generated";
 }
 
 export async function saveAsset(asset: StoredAssetRecord): Promise<void> {
