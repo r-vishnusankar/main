@@ -12,6 +12,11 @@ import {
   type ContentPostPlatform,
 } from "@/lib/indexedDB";
 import { buildTextToImagePrompt, buildImageToImagePrompt } from "@/lib/imagePrompt";
+import {
+  BlogTemplateRenderer,
+  TEMPLATES,
+  type BlogTemplateId,
+} from "@/components/BlogTemplates";
 
 async function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
   return new Promise((resolve, reject) => {
@@ -40,6 +45,7 @@ const PLATFORM_OPTIONS: { value: ContentPostPlatform; label: string }[] = [
   { value: "facebook", label: "Facebook" },
   { value: "instagram", label: "Instagram" },
   { value: "whatsapp", label: "WhatsApp" },
+  { value: "blog", label: "Blog Page" },
 ];
 
 const ASPECT_RATIO_OPTIONS = [
@@ -103,6 +109,13 @@ export default function ContentPublishView() {
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [scheduleGenerateThenPost, setScheduleGenerateThenPost] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [blogTemplate, setBlogTemplate] = useState<BlogTemplateId>("card");
+  const [blogHeadline, setBlogHeadline] = useState("");
+  const [blogSubtitle, setBlogSubtitle] = useState("");
+  const [blogBody, setBlogBody] = useState("");
+  const [blogCta, setBlogCta] = useState("");
+  const [generatingBlog, setGeneratingBlog] = useState(false);
+  const [blogGenerateError, setBlogGenerateError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const createRefInputRef = useRef<HTMLInputElement>(null);
 
@@ -170,6 +183,55 @@ export default function ContentPublishView() {
     }
   };
 
+  const handleGenerateBlogContent = async () => {
+    const imageUrl = imagePreviewUrl ?? "";
+    if (!imageUrl.trim()) {
+      setBlogGenerateError("Add an image first (upload or create).");
+      return;
+    }
+    setGeneratingBlog(true);
+    setBlogGenerateError(null);
+    try {
+      let imageBase64: string;
+      let imageMimeType: string;
+      const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        imageBase64 = match[2];
+        imageMimeType = match[1];
+      } else if (imageFile) {
+        const b = await fileToBase64(imageFile);
+        imageBase64 = b.base64;
+        imageMimeType = b.mimeType;
+      } else {
+        setBlogGenerateError("Image must be uploaded or AI-generated. Try re-uploading.");
+        setGeneratingBlog(false);
+        return;
+      }
+      const res = await fetch("/api/generate-blog-content", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageBase64,
+          imageMimeType,
+          ...(context.trim() && { context: context.trim() }),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Generate failed");
+      setBlogHeadline(data.headline ?? "It's All in the Details");
+      setBlogSubtitle(data.subtitle ?? "");
+      setBlogBody(data.body ?? "");
+      setBlogCta(data.cta ?? "Read more");
+      setSocialCaption(data.socialCaption ?? "");
+      setAltText(data.altText ?? "");
+      setBlogDescription(data.body ?? "");
+    } catch (err) {
+      setBlogGenerateError(err instanceof Error ? err.message : "Generate failed");
+    } finally {
+      setGeneratingBlog(false);
+    }
+  };
+
   const hashtagsStr = hashtags.join(", ");
   const setHashtagsFromStr = (s: string) => {
     setHashtags(
@@ -189,12 +251,17 @@ export default function ContentPublishView() {
     setBlogDescription(post.blogDescription);
     setHashtags(post.hashtags ?? []);
     setPlatform(
-      post.platform === "social" || post.platform === "blog" || post.platform === "shopify_blog"
+      post.platform === "social" || post.platform === "shopify_blog"
         ? "facebook"
         : post.platform
     );
     setScheduledAt(post.scheduledAt ? utcISOToISTInput(post.scheduledAt) : "");
     setImageSourceMode("upload");
+    setBlogTemplate((post.blogTemplate as BlogTemplateId) || "card");
+    setBlogHeadline(post.blogHeadline ?? "");
+    setBlogSubtitle(post.blogSubtitle ?? "");
+    setBlogBody(post.blogBody ?? "");
+    setBlogCta(post.blogCta ?? "");
   };
 
   const clearForm = () => {
@@ -215,6 +282,12 @@ export default function ContentPublishView() {
     setCreateRefFile(null);
     setGenerateError(null);
     setScheduleGenerateThenPost(false);
+    setBlogTemplate("card");
+    setBlogHeadline("");
+    setBlogSubtitle("");
+    setBlogBody("");
+    setBlogCta("");
+    setBlogGenerateError(null);
   };
 
   const handleGenerateImage = async () => {
@@ -340,7 +413,11 @@ export default function ContentPublishView() {
 
     const imageUrl = imagePreviewUrl ?? "";
     if (!imageUrl.trim()) return;
-    if (!socialCaption.trim() && !blogDescription.trim()) return;
+    const hasContent =
+      platform === "blog"
+        ? blogHeadline.trim() || blogBody.trim()
+        : socialCaption.trim() || blogDescription.trim();
+    if (!hasContent) return;
 
     setSaving(true);
     setPublishError(null);
@@ -353,14 +430,21 @@ export default function ContentPublishView() {
       const record: StoredContentPostRecord = {
         id: editingId ?? generateId(),
         imageUrl: finalImageUrl,
-        socialCaption,
+        socialCaption: platform === "blog" ? blogHeadline : socialCaption,
         altText,
-        blogDescription,
+        blogDescription: platform === "blog" ? blogBody : blogDescription,
         hashtags,
         platform,
         scheduledAt: scheduledAtUTC,
         status: scheduledAtUTC ? "scheduled" : "draft",
         createdAt: editingId ? (posts.find((p) => p.id === editingId)?.createdAt ?? now) : now,
+        ...(platform === "blog" && {
+          blogTemplate,
+          blogHeadline,
+          blogSubtitle,
+          blogBody,
+          blogCta,
+        }),
       };
       if (editingId) {
         await updateContentPost(editingId, record);
@@ -423,6 +507,14 @@ export default function ContentPublishView() {
   const handlePublishNow = async (post: StoredContentPostRecord) => {
     setPublishError(null);
     try {
+      if (post.platform === "blog") {
+        await updateContentPost(post.id, {
+          status: "published",
+          publishedAt: new Date().toISOString(),
+        });
+        await loadPosts();
+        return;
+      }
       const res = await fetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -452,8 +544,12 @@ export default function ContentPublishView() {
       setPublishError("Add an image first (upload or create).");
       return;
     }
-    if (!socialCaption.trim() && !blogDescription.trim()) {
-      setPublishError("Add a caption or description.");
+    const hasContent =
+      platform === "blog"
+        ? blogHeadline.trim() || blogBody.trim()
+        : socialCaption.trim() || blogDescription.trim();
+    if (!hasContent) {
+      setPublishError(platform === "blog" ? "Add headline and body, or generate blog content." : "Add a caption or description.");
       return;
     }
     setPublishing(true);
@@ -461,6 +557,36 @@ export default function ContentPublishView() {
     try {
       let finalImageUrl = imageUrl;
       if (imageFile) finalImageUrl = await fileToDataUrl(imageFile);
+
+      if (platform === "blog") {
+        const id = editingId ?? generateId();
+        const now = new Date().toISOString();
+        const record: StoredContentPostRecord = {
+          id,
+          imageUrl: finalImageUrl,
+          socialCaption: blogHeadline,
+          altText,
+          blogDescription: blogBody,
+          hashtags,
+          platform: "blog",
+          scheduledAt: null,
+          status: "published",
+          createdAt: editingId ? (posts.find((p) => p.id === editingId)?.createdAt ?? now) : now,
+          publishedAt: now,
+          blogTemplate,
+          blogHeadline,
+          blogSubtitle,
+          blogBody,
+          blogCta,
+        };
+        if (editingId) await updateContentPost(editingId, record);
+        else await saveContentPost(record);
+        await loadPosts();
+        clearForm();
+        setPublishing(false);
+        return;
+      }
+
       const res = await fetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -504,15 +630,23 @@ export default function ContentPublishView() {
     }
   };
 
-  const canSave = imagePreviewUrl && (socialCaption.trim() || blogDescription.trim());
-  const canPreview = imagePreviewUrl && (socialCaption.trim() || blogDescription.trim());
+  const canSave =
+    imagePreviewUrl &&
+    (platform === "blog"
+      ? blogHeadline.trim() || blogBody.trim()
+      : socialCaption.trim() || blogDescription.trim());
+  const canPreview =
+    imagePreviewUrl &&
+    (platform === "blog"
+      ? blogHeadline.trim() || blogBody.trim()
+      : socialCaption.trim() || blogDescription.trim());
   const platformLabel = PLATFORM_OPTIONS.find((o) => o.value === platform)?.label ?? platform;
 
   return (
     <div className="w-full min-w-0 px-8 py-10">
       <h1 className="text-[22px] font-semibold text-white mb-2">Publish</h1>
       <p className="text-gray-400 text-[15px] mb-6 leading-relaxed">
-        Upload or create an image, add caption and content, then preview and publish to Facebook, Instagram, or WhatsApp. Schedule in India (IST) or generate image at scheduled time.
+        Upload or create an image, add caption and content. Publish to Meta (Facebook/Instagram), WhatsApp, or build a Blog page with templates. Use AI to generate blog content from your image. Schedule in India (IST) or generate at scheduled time.
       </p>
 
       <div className="space-y-6">
@@ -655,6 +789,99 @@ export default function ContentPublishView() {
 
         <section className="p-6 rounded-xl border border-[var(--border)] bg-[var(--card-bg)]">
           <h2 className="text-[17px] font-semibold text-white mb-4">2. Edit content</h2>
+
+          {platform === "blog" && (
+            <>
+              <div className="mb-6">
+                <label className="block text-sm text-gray-400 mb-3">Template</label>
+                <div className="flex flex-wrap gap-3">
+                  {TEMPLATES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setBlogTemplate(t.id)}
+                      className={`px-4 py-3 rounded-xl border text-left transition-colors ${
+                        blogTemplate === t.id
+                          ? "border-[var(--accent)] bg-[var(--accent)]/10 text-white"
+                          : "border-white/10 hover:border-white/20 text-gray-300"
+                      }`}
+                    >
+                      <span className="font-medium block">{t.name}</span>
+                      <span className="text-xs text-gray-500">{t.description}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="mb-4">
+                <button
+                  type="button"
+                  disabled={!imagePreviewUrl || generatingBlog}
+                  onClick={handleGenerateBlogContent}
+                  className="px-4 py-2 bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-50 disabled:pointer-events-none rounded-lg text-white font-medium transition-colors"
+                >
+                  {generatingBlog ? "Generating…" : "Generate blog content with AI"}
+                </button>
+                {blogGenerateError && (
+                  <p className="mt-2 text-sm text-red-400">{blogGenerateError}</p>
+                )}
+              </div>
+              <div className="space-y-4 mb-6">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Headline</label>
+                  <input
+                    type="text"
+                    value={blogHeadline}
+                    onChange={(e) => setBlogHeadline(e.target.value)}
+                    placeholder="e.g. It's All in the Details"
+                    className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Subtitle / category (optional)</label>
+                  <input
+                    type="text"
+                    value={blogSubtitle}
+                    onChange={(e) => setBlogSubtitle(e.target.value)}
+                    placeholder="e.g. THE NEW STORY, NEWS HEADLINE"
+                    className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Body content</label>
+                  <textarea
+                    value={blogBody}
+                    onChange={(e) => setBlogBody(e.target.value)}
+                    placeholder="Blog post body…"
+                    rows={6}
+                    className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 resize-y"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Call-to-action (optional)</label>
+                  <input
+                    type="text"
+                    value={blogCta}
+                    onChange={(e) => setBlogCta(e.target.value)}
+                    placeholder="e.g. Swipe to know more"
+                    className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Alt text (accessibility)</label>
+                  <input
+                    type="text"
+                    value={altText}
+                    onChange={(e) => setAltText(e.target.value)}
+                    placeholder="Image description for screen readers"
+                    maxLength={125}
+                    className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {platform !== "blog" && (
           <div className="space-y-4">
             <div>
               <label className="block text-sm text-gray-400 mb-1">Social caption</label>
@@ -698,7 +925,10 @@ export default function ContentPublishView() {
                 className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500"
               />
             </div>
-            <div className="flex flex-wrap gap-4 items-center">
+          </div>
+          )}
+
+          <div className="flex flex-wrap gap-4 items-center mt-6">
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Platform</label>
                 <select
@@ -729,7 +959,8 @@ export default function ContentPublishView() {
               >
                 {publishing ? "Publishing…" : `Publish to ${platformLabel}`}
               </button>
-            </div>
+          </div>
+          {platform !== "blog" && (
             <div className="flex flex-wrap gap-4 items-end mt-4">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -772,7 +1003,28 @@ export default function ContentPublishView() {
                 </button>
               )}
             </div>
-          </div>
+          )}
+          {platform === "blog" && (
+            <div className="flex flex-wrap gap-4 items-end mt-4">
+              <button
+                type="button"
+                disabled={saving || !canSave}
+                onClick={handleSavePost}
+                className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:pointer-events-none rounded-lg text-white font-medium transition-colors"
+              >
+                {saving ? "Saving…" : editingId ? "Update blog" : "Save blog"}
+              </button>
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={clearForm}
+                  className="px-4 py-2 bg-[#3a3a3a] hover:bg-[#4a4a4a] rounded-lg text-white font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          )}
           {publishError && <p className="mt-2 text-sm text-red-400">{publishError}</p>}
         </section>
 
@@ -795,8 +1047,10 @@ export default function ContentPublishView() {
                     />
                   </div>
                   <div className="p-4 flex flex-col gap-2 min-h-0">
-                    <p className="text-sm text-gray-300 line-clamp-2" title={post.socialCaption || post.blogDescription || ""}>
-                      {post.socialCaption || post.blogDescription || "No caption"}
+                    <p className="text-sm text-gray-300 line-clamp-2" title={post.blogHeadline || post.socialCaption || post.blogDescription || ""}>
+                      {post.platform === "blog"
+                        ? post.blogHeadline || post.socialCaption || "Blog post"
+                        : post.socialCaption || post.blogDescription || "No caption"}
                     </p>
                     <p className="text-xs text-gray-500">
                       {post.platform} · {post.status}
@@ -841,7 +1095,7 @@ export default function ContentPublishView() {
           onClick={() => setShowPreviewModal(false)}
         >
           <div
-            className="bg-[#1a1a1a] border border-[#3a3a3a] rounded-xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-xl"
+            className={`${platform === "blog" ? "max-w-4xl" : "max-w-2xl"} bg-[#1a1a1a] border border-[#3a3a3a] rounded-xl w-full max-h-[95vh] overflow-y-auto shadow-xl`}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="p-4 flex justify-between items-center border-b border-[#3a3a3a]">
@@ -854,21 +1108,42 @@ export default function ContentPublishView() {
                 Close
               </button>
             </div>
-            <div className="p-4 space-y-4">
-              {imagePreviewUrl && (
-                <img
-                  src={imagePreviewUrl}
-                  alt="Post preview"
-                  className="w-full rounded-lg border border-[#3a3a3a] object-contain max-h-80"
-                />
-              )}
-              <div className="text-gray-300 whitespace-pre-wrap break-words">
-                {socialCaption || blogDescription || "(No caption)"}
-              </div>
-              {hashtags.length > 0 && (
-                <p className="text-sm text-gray-500">
-                  #{hashtags.join(" #")}
-                </p>
+            <div className="p-4">
+              {platform === "blog" && imagePreviewUrl ? (
+                <div className="bg-[#2a2a2a] rounded-lg p-4">
+                  <BlogTemplateRenderer
+                    templateId={blogTemplate}
+                    imageUrl={imagePreviewUrl}
+                    headline={blogHeadline || "Headline"}
+                    subtitle={blogSubtitle}
+                    body={blogBody || "Body content…"}
+                    cta={blogCta}
+                    date={new Date().toLocaleDateString("en-GB", {
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                    })}
+                    socialHandle="pixmerce"
+                  />
+                </div>
+              ) : (
+                <>
+                  {imagePreviewUrl && (
+                    <img
+                      src={imagePreviewUrl}
+                      alt="Post preview"
+                      className="w-full rounded-lg border border-[#3a3a3a] object-contain max-h-[60vh] mb-4"
+                    />
+                  )}
+                  <div className="text-gray-300 whitespace-pre-wrap break-words">
+                    {socialCaption || blogDescription || "(No caption)"}
+                  </div>
+                  {hashtags.length > 0 && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      #{hashtags.join(" #")}
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </div>

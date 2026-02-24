@@ -104,12 +104,14 @@ const VISION_MODEL = process.env.GEMINI_VISION_MODEL || "gemini-2.0-flash";
  * Analyze an image and return a text description (vision: image in, text out).
  * Used for generating social captions, alt text, and blog descriptions.
  * Does not use responseModalities; default text-only response.
+ * @param maxOutputTokens - Optional. Increase for longer outputs (e.g. blog body). Default 2048.
  */
 export async function describeImage(
   apiKey: string,
   imageBase64: string,
   imageMimeType: string,
-  prompt: string
+  prompt: string,
+  maxOutputTokens = 2048
 ): Promise<string> {
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
@@ -123,6 +125,9 @@ export async function describeImage(
         ],
       },
     ],
+    config: {
+      maxOutputTokens,
+    },
   });
 
   const candidates = response.candidates;

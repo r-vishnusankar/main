@@ -1,6 +1,16 @@
 # Curated Image Sources for Home Preview Cards
 
-Free images from **Unsplash** (license: free for commercial use). Download and save as the corresponding filename in this folder.
+**Recommended: Automated download (fashion, cosmetic, sale images)**
+
+1. Get a free Unsplash API key: https://unsplash.com/developers
+2. Add to `.env.local`: `UNSPLASH_ACCESS_KEY=your_key`
+3. Run: `node scripts/download-home-images.js`
+
+This fetches fashion dress, cosmetic, and sale promo images from Unsplash.
+
+---
+
+**Manual download:** Free images from **Unsplash**. Click each link, then right-click → Save image as → save to this folder with the exact filename.
 
 ---
 

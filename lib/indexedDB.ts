@@ -163,6 +163,16 @@ export interface StoredContentPostRecord {
   createdAt: string;
   publishedAt?: string;
   externalId?: string;
+  /** Blog page: template id */
+  blogTemplate?: string;
+  /** Blog page: headline */
+  blogHeadline?: string;
+  /** Blog page: subtitle/category */
+  blogSubtitle?: string;
+  /** Blog page: full body content */
+  blogBody?: string;
+  /** Blog page: call-to-action */
+  blogCta?: string;
 }
 
 export async function saveContentPost(post: StoredContentPostRecord): Promise<void> {
