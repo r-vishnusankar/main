@@ -12,11 +12,19 @@ services:
   - type: web
     name: pixmerce-app
     runtime: node
-    buildCommand: npm install && npm run build
+    buildCommand: npm install && npx prisma generate && npm run build
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
+      # Authentication (Clerk)
+      - key: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      # Neon Database (PostgreSQL)
+      - key: DATABASE_URL
+        sync: false
       # Upstash Redis – get free at https://upstash.com → Create Database → REST API
       - key: UPSTASH_REDIS_REST_URL
         sync: false
@@ -32,6 +40,11 @@ services:
       - key: META_PAGE_ID
         sync: false
       - key: META_PAGE_ACCESS_TOKEN
+        sync: false
+      - key: META_IG_ACCOUNT_ID
+        sync: false
+      # ImgBB
+      - key: IMGBB_API_KEY
         sync: false
       # WhatsApp Cloud API
       - key: WHATSAPP_PHONE_NUMBER_ID
@@ -63,7 +76,7 @@ services:
     startCommand: >-
       curl -s -X GET
       -H "Authorization: Bearer $CRON_SECRET"
-      https://YOUR_APP_URL/api/cron/publish-scheduled
+      https://poc-products.onrender.com/api/cron/publish-scheduled
     envVars:
       - key: CRON_SECRET
         sync: false
