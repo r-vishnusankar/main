@@ -2,6 +2,8 @@
 
 Pixmerce supports **Netlify** and **Render**. The persistent scheduler uses **Upstash Redis** which works on both platforms.
 
+**Production URL (Netlify):** https://pixmerce-prod.netlify.app/
+
 ---
 
 ## Step 0: Get Upstash Redis (Required for Scheduling)

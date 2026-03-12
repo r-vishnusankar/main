@@ -5,7 +5,10 @@ const isProtectedRoute = createRouteMatcher([
   '/api/generate-image(.*)'
 ])
 
+const bypassAuth = process.env.DISABLE_AUTH === 'true'
+
 export default clerkMiddleware(async (auth, req) => {
+  if (bypassAuth) return // Skip Clerk protection when DISABLE_AUTH=true
   if (isProtectedRoute(req)) {
       await auth.protect()
   }
