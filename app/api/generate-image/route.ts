@@ -6,7 +6,8 @@ import { buildTextToImagePrompt } from "@/lib/imagePrompt";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 
-const apiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY ?? process.env.NANOBANANA_API_KEY;
+const rawApiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY ?? process.env.NANOBANANA_API_KEY;
+const apiKey = rawApiKey?.trim();
 
 /** Minimal prompt for a single retry when validation fails (saves tokens). */
 function retryPrompt(aspectRatio: string): string {

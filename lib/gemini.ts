@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.0-flash";
+const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
 
 /**
  * Generate an image from a text prompt using Gemini image model.
