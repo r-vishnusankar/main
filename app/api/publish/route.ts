@@ -23,10 +23,6 @@ export async function POST(request: NextRequest) {
       to?: string;
     };
 
-    if (!imageUrl || typeof imageUrl !== "string") {
-      return NextResponse.json({ error: "imageUrl is required" }, { status: 400 });
-    }
-
     const platformNorm = (platform || "facebook").toLowerCase();
 
     if (
@@ -56,7 +52,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await doPublish({
-      imageUrl,
+      imageUrl: imageUrl || undefined,
       socialCaption,
       blogDescription,
       platform: platformNorm,

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateImage, generateImageFromImage } from "@/lib/gemini";
+import { generateImage, generateImageFromImage, generateImageFromMultipleImages } from "@/lib/gemini";
 import { validateGeneratedImage } from "@/lib/validateGeneratedImage";
 import { isEnhanceAvailable, enhanceImage } from "@/lib/enhanceImage";
 import { buildTextToImagePrompt } from "@/lib/imagePrompt";
+import { auth, currentUser } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/prisma";
 
 const apiKey = process.env.GOOGLE_GEMINI_API_KEY ?? process.env.GEMINI_API_KEY ?? process.env.NANOBANANA_API_KEY;
 
@@ -20,9 +22,27 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+
   try {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
+    }
+
+    // Attempt to sync user from Clerk to local DB if they don't exist
+    let user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      const cUser = await currentUser();
+      const email = cUser?.emailAddresses[0]?.emailAddress || `${userId}@placeholder.com`;
+      user = await prisma.user.create({ data: { id: userId, email: email, credits: 50 } });
+    }
+
+    if (user.credits <= 0) {
+      return NextResponse.json({ error: "Insufficient credits. Please upgrade your plan." }, { status: 403 });
+    }
+
     const body = await request.json();
-    const { prompt, imageBase64, imageMimeType, aspectRatio, enhanceQuality } = body;
+    const { prompt, imageBase64, imageMimeType, aspectRatio, enhanceQuality, images } = body;
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
         { error: "prompt is required" },
@@ -34,6 +54,35 @@ export async function POST(request: NextRequest) {
     let textOnlyFallback = false;
 
     const tryGenerate = async (usePrompt: string): Promise<string> => {
+      // Multi-image: images array
+      const imagesArray = Array.isArray(images) ? images : [];
+      const validImages = imagesArray.filter(
+        (img: unknown) =>
+          img &&
+          typeof img === "object" &&
+          typeof (img as { imageBase64?: string }).imageBase64 === "string"
+      );
+      if (validImages.length > 0) {
+        const imagesForApi = validImages.map((img: { imageBase64: string; imageMimeType?: string }) => ({
+          base64: img.imageBase64,
+          mimeType: typeof img.imageMimeType === "string" ? img.imageMimeType : "image/png",
+        }));
+        try {
+          return await generateImageFromMultipleImages(apiKey, usePrompt, imagesForApi, aspect);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (
+            msg.includes("No content") ||
+            msg.includes("No image in response") ||
+            msg.includes("No response")
+          ) {
+            textOnlyFallback = true;
+            return await generateImage(apiKey, usePrompt);
+          }
+          throw err;
+        }
+      }
+      // Single image: imageBase64/imageMimeType
       if (imageBase64 && typeof imageBase64 === "string") {
         try {
           return await generateImageFromImage(
@@ -77,7 +126,22 @@ export async function POST(request: NextRequest) {
       if (enhanced) imageUrl = enhanced;
     }
 
-    return NextResponse.json({ imageUrl, status: "success", textOnlyFallback });
+    // Deduct 1 credit & save image record
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: { credits: { decrement: 1 } },
+      }),
+      prisma.image.create({
+        data: {
+          url: imageUrl,
+          userId: userId,
+          prompt: prompt,
+        },
+      }),
+    ]);
+
+    return NextResponse.json({ imageUrl, status: "success", textOnlyFallback, creditsRemaining: user.credits - 1 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Generation failed";
     return NextResponse.json({ error: message }, { status: 500 });

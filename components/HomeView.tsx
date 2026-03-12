@@ -1,6 +1,7 @@
 "use client";
 
 import PreviewImage from "@/components/PreviewImage";
+import { Hero } from "@/components/ui/animated-hero";
 
 interface HomeViewProps {
   onNavigate?: (navId: "create" | "banners" | "templates" | "help" | "gallery" | "content-publish" | "home") => void;
@@ -182,81 +183,54 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
   return (
     <div className="w-full min-w-0">
 
-      {/* HERO */}
-      <section className="px-8 pt-12 pb-14 flex flex-col lg:flex-row gap-12 items-center">
-      <div className="flex-1 min-w-0">
-        <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 rounded-full border border-[var(--accent)]/30 bg-[var(--accent)]/10">
-          <span className="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
-          <span className="text-[12px] font-bold text-[var(--accent)] tracking-widest uppercase">AI-powered for e-commerce</span>
-        </div>
-        <h1 className="text-[2.4rem] sm:text-[3rem] font-black text-white leading-[1.08] tracking-tight mb-4">
-          Turn product images<br />
-          into <span className="text-gradient">stunning banners</span><br />
-          in seconds
-        </h1>
-        <p className="text-gray-400 text-[15px] leading-relaxed mb-6 max-w-[500px]">
-          Upload a product image, pick a purpose — homepage banner, product card, Instagram post, sale promo — and let AI create pixel-perfect visuals for every platform.
-        </p>
-        <div className="flex flex-wrap gap-3 mb-6">
-          <button type="button" onClick={() => onNavigate?.("create")} className="btn-primary text-[15px] px-7 py-3">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
-            Start Creating Free
-          </button>
-          <button type="button" onClick={() => onNavigate?.("templates")} className="btn-secondary text-[15px] px-7 py-3">
-            <IconTemplate />
-            Browse Templates
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-4">
-          {["Homepage banners","Instagram posts","Product cards","Sale promos"].map((t) => (
-            <span key={t} className="flex items-center gap-1.5 text-[13px] text-gray-500">
-              <IconCheck />
-              {t}
-            </span>
-          ))}
-        </div>
-      </div>
-      <div className="flex-shrink-0 w-full lg:w-[46%] xl:w-[48%]">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2">
-            <PreviewImage
-              slot="hero-main"
-              alt="Homepage banner example"
-              className="w-full aspect-video rounded-2xl"
-              overlay={<BannerOverlay title="Summer Sale — Up to 60% Off" subtitle="Homepage Banner · 16:9" cta="Shop Now" />}
-            />
-          </div>
-          <PreviewImage
-            slot="hero-square-1"
-            alt="Instagram post example"
-            className="aspect-square w-full rounded-2xl"
-            overlay={
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex flex-col justify-end p-3">
-                <p className="text-[9px] font-semibold text-white/50 uppercase tracking-widest mb-0.5">Instagram · 1:1</p>
-                <p className="text-[13px] font-black text-white">New Drop ✦</p>
+      {/* HERO — Animated (left content + right image grid) */}
+      <section className="px-8 pt-12 pb-14">
+        <Hero
+          onNavigate={onNavigate}
+          rightSlot={
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="col-span-2">
+                  <PreviewImage
+                    slot="hero-main"
+                    alt="Homepage banner example"
+                    className="w-full aspect-video rounded-2xl"
+                    overlay={<BannerOverlay title="Summer Sale — Up to 60% Off" subtitle="Homepage Banner · 16:9" cta="Shop Now" />}
+                  />
+                </div>
+                <PreviewImage
+                  slot="hero-square-1"
+                  alt="Instagram post example"
+                  className="aspect-square w-full rounded-2xl"
+                  overlay={
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex flex-col justify-end p-3">
+                      <p className="text-[9px] font-semibold text-white/50 uppercase tracking-widest mb-0.5">Instagram · 1:1</p>
+                      <p className="text-[13px] font-black text-white">New Drop ✦</p>
+                    </div>
+                  }
+                />
+                <PreviewImage
+                  slot="hero-portrait-1"
+                  alt="Product card example"
+                  className="w-full rounded-2xl"
+                  style={{ aspectRatio: "3/4" }}
+                  overlay={
+                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3">
+                      <p className="text-[9px] text-white/50 uppercase tracking-widest font-semibold mb-0.5">Product Card · 3:4</p>
+                      <p className="text-[13px] font-black text-white">₹2,499</p>
+                      <div className="mt-1.5 py-1 rounded-lg bg-white/90 text-center text-[10px] font-bold text-black">Add to Cart</div>
+                    </div>
+                  }
+                />
               </div>
-            }
-          />
-          <PreviewImage
-            slot="hero-portrait-1"
-            alt="Product card example"
-            className="w-full rounded-2xl"
-            style={{ aspectRatio:"3/4" }}
-            overlay={
-              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-3">
-                <p className="text-[9px] text-white/50 uppercase tracking-widest font-semibold mb-0.5">Product Card · 3:4</p>
-                <p className="text-[13px] font-black text-white">₹2,499</p>
-                <div className="mt-1.5 py-1 rounded-lg bg-white/90 text-center text-[10px] font-bold text-black">Add to Cart</div>
-              </div>
-            }
-          />
-        </div>
-        <p className="text-center text-[12px] text-gray-600 mt-3">AI-generated outputs — yours will be unique</p>
-      </div>
+              <p className="text-center text-[12px] text-gray-600 mt-3">AI-generated outputs — yours will be unique</p>
+            </>
+          }
+        />
       </section>
 
       {/* WHAT YOU CAN CREATE */}
-      <section className="px-8 py-14 border-t border-white/[0.05]">
+      <section className="px-8 py-14">
         <div className="mb-8">
           <p className="text-[12px] font-bold text-[var(--accent)] uppercase tracking-widest mb-2">Create for any purpose</p>
           <h2 className="text-[26px] sm:text-[30px] font-black text-white tracking-tight leading-tight">
@@ -302,7 +276,7 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
       </section>
 
       {/* HOW IT WORKS */}
-      <section className="px-8 py-16 border-t border-white/[0.05]">
+      <section className="px-8 py-16">
         <div className="mb-10 text-center">
           <p className="text-[12px] font-bold text-[var(--accent)] uppercase tracking-widest mb-2">Simple 3-step workflow</p>
           <h2 className="text-[26px] sm:text-[30px] font-black text-white tracking-tight">How it works</h2>
@@ -333,7 +307,7 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
       </section>
 
       {/* CUSTOM TEMPLATES */}
-      <section className="px-8 py-12 border-t border-white/[0.05]">
+      <section className="px-8 py-12">
         <div className="rounded-2xl border border-white/[0.08] overflow-hidden" style={{background:"linear-gradient(120deg,#0a0f1e 0%,#0e1b38 50%,#0a0f1e 100%)"}}>
           <div className="flex flex-col lg:flex-row items-center gap-8 p-8">
           <div className="flex-1 min-w-0">
@@ -386,7 +360,7 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
       </section>
 
       {/* PUBLISH & SCHEDULE */}
-      <section className="px-8 py-12 border-t border-white/[0.05]">
+      <section className="px-8 py-12">
         <div className="flex flex-col lg:flex-row gap-10 items-center">
         <div className="flex-1 min-w-0">
           <p className="text-[12px] font-bold text-purple-400 uppercase tracking-widest mb-3">Multi-platform publishing</p>
@@ -450,7 +424,7 @@ export default function HomeView({ onNavigate }: HomeViewProps) {
       </section>
 
       {/* CTA FOOTER */}
-      <section className="px-8 py-14 border-t border-white/[0.05]">
+      <section className="px-8 py-14">
         <div className="rounded-2xl p-10 text-center relative overflow-hidden" style={{background:"linear-gradient(120deg,#0d1b3e 0%,#1a2a6c 50%,#0d1b3e 100%)"}}>
           <div className="absolute inset-0 opacity-5">
             <PreviewImage slot="hero-main" alt="" className="w-full h-full" style={{objectFit:"cover"}} />

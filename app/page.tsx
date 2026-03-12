@@ -1,805 +1,438 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useSearchParams, usePathname, useRouter } from "next/navigation";
-import BannerCarousel from "@/components/BannerCarousel";
-import ImageSourcePanel from "@/components/ImageSourcePanel";
-import CalendarPanel from "@/components/CalendarPanel";
-import ExportPanel from "@/components/ExportPanel";
-import LeftSidebar, { type NavItemId } from "@/components/LeftSidebar";
-import TopNav from "@/components/TopNav";
-import RightSidebar from "@/components/RightSidebar";
-import TemplateGallery from "@/components/TemplateGallery";
-import HomeView from "@/components/HomeView";
-import BannersView from "@/components/BannersView";
-import GalleryView from "@/components/GalleryView";
-import HelpView from "@/components/HelpView";
-import ContentPublishView from "@/components/ContentPublishView";
-import OnboardingBanner from "@/components/OnboardingBanner";
-import type { Slide, AspectRatio } from "@/types/banner";
-import { resizeDataUrlToAspect, resizeDataUrlToMaxDimension } from "@/lib/resizeToAspect";
-import { type ImagePurpose, IMAGE_PURPOSE_OPTIONS, IMAGE_PURPOSE_ASPECT_RATIO } from "@/lib/imagePurpose";
-import { buildTextToImagePrompt, buildImageToImagePrompt, type CampaignPurposeType } from "@/lib/imagePrompt";
-import { getBrandPromptSuffix, getBrandKit, setBrandKit } from "@/lib/brandKit";
-import type { Celebration } from "@/lib/calendar";
+import Link from "next/link";
+import HeroSection from "@/components/ui/hero-section-2";
+import PreviewImage from "@/components/PreviewImage";
+import { Show, UserButton, SignInButton, SignUpButton } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 
-const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
-  { value: "16:9", label: "16:9" },
-  { value: "3:1", label: "3:1" },
-  { value: "4:1", label: "4:1" },
-  { value: "1:1", label: "1:1" },
-];
+/* ── Icons ── */
+function IconArrow() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+    </svg>
+  );
+}
+function IconUpload() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+    </svg>
+  );
+}
+function IconTemplate() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="9" y1="21" x2="9" y2="9" />
+    </svg>
+  );
+}
+function IconSend() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+    </svg>
+  );
+}
+function IconCalendar() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
 
-const VALID_NAV_IDS: NavItemId[] = ["home", "create", "banners", "gallery", "templates", "content-publish", "help"];
+/* ── Step UI Mockups ── */
+function StepUploadMockup() {
+  return (
+    <div className="rounded-2xl overflow-hidden border border-white/[0.08] bg-[#0e0e14]">
+      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#1a1a26] border-b border-white/[0.06]">
+        {["#ff5f57","#febc2e","#28c840"].map(c => <span key={c} className="w-2.5 h-2.5 rounded-full" style={{background:c}} />)}
+        <div className="flex-1 mx-3 h-5 rounded-md bg-white/[0.06] flex items-center px-2">
+          <span className="text-[10px] text-gray-600">pixmerce.ai/create</span>
+        </div>
+      </div>
+      <div className="p-4">
+        <p className="text-[11px] font-semibold text-gray-400 mb-3 uppercase tracking-wide">Select purpose</p>
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {["Homepage Banner","Product Card","Instagram Post","Sale Promo"].map((t,i) => (
+            <span key={t} className={`px-2.5 py-1 rounded-lg text-[10px] font-medium border ${i===0?"bg-[var(--accent)]/15 border-[var(--accent)]/50 text-[var(--accent)]":"bg-white/[0.04] border-white/[0.08] text-gray-500"}`}>{t}</span>
+          ))}
+        </div>
+        <div className="rounded-xl overflow-hidden mb-3 relative" style={{height:90}}>
+          <PreviewImage slot="step-1" alt="Upload step" className="w-full h-full" />
+          <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center gap-1.5">
+            <div className="w-7 h-7 rounded-lg bg-[var(--accent)]/80 flex items-center justify-center text-white"><IconUpload /></div>
+            <p className="text-[10px] text-white/70 font-medium">Drop product image here</p>
+          </div>
+        </div>
+        <div className="h-7 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center px-2">
+          <span className="text-[10px] text-gray-600">Aspect ratio: 16:9 ▾</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-export default function EditorPage() {
-  const searchParams = useSearchParams();
-  const pathname = usePathname();
+function StepPromptMockup() {
+  return (
+    <div className="rounded-2xl overflow-hidden border border-white/[0.08] bg-[#0e0e14]">
+      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#1a1a26] border-b border-white/[0.06]">
+        {["#ff5f57","#febc2e","#28c840"].map(c => <span key={c} className="w-2.5 h-2.5 rounded-full" style={{background:c}} />)}
+        <div className="flex-1 mx-3 h-5 rounded-md bg-white/[0.06]" />
+      </div>
+      <div className="p-4">
+        <div className="w-full rounded-lg mb-3 overflow-hidden relative" style={{height:80}}>
+          <PreviewImage slot="step-2" alt="Template step" className="w-full h-full" />
+          <span className="absolute bottom-1.5 right-1.5 text-[9px] bg-black/60 text-white/60 px-1.5 py-0.5 rounded font-medium">product.jpg ✓</span>
+        </div>
+        <p className="text-[10px] text-gray-500 mb-2 uppercase tracking-wide font-semibold">Template</p>
+        <div className="flex gap-1.5 mb-3 overflow-hidden">
+          {["Hero Banner","Product Card","Story"].map((t,i) => (
+            <div key={t} className={`flex-shrink-0 px-2 py-1.5 rounded-lg border text-[9px] font-medium ${i===0?"border-[var(--accent)]/50 bg-[var(--accent)]/10 text-[var(--accent)]":"border-white/[0.08] text-gray-600"}`}>{t}</div>
+          ))}
+        </div>
+        <p className="text-[10px] text-gray-500 mb-1.5 uppercase tracking-wide font-semibold">Prompt</p>
+        <div className="rounded-lg border border-white/[0.1] bg-white/[0.03] p-2.5 mb-3">
+          <p className="text-[10px] text-gray-400 leading-relaxed">E-commerce homepage hero banner, clean modern style, vibrant colors, strong CTA…</p>
+        </div>
+        <div className="h-8 rounded-lg bg-[var(--accent)] flex items-center justify-center gap-1">
+          <span className="text-[10px] font-bold text-white">✦ Generate</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StepOutputMockup() {
+  return (
+    <div className="rounded-2xl overflow-hidden border border-white/[0.08] bg-[#0e0e14]">
+      <div className="flex items-center gap-1.5 px-3 py-2 bg-[#1a1a26] border-b border-white/[0.06]">
+        {["#ff5f57","#febc2e","#28c840"].map(c => <span key={c} className="w-2.5 h-2.5 rounded-full" style={{background:c}} />)}
+        <div className="flex-1 mx-3 h-5 rounded-md bg-white/[0.06]" />
+      </div>
+      <div className="p-4">
+        <div className="w-full rounded-xl mb-3 overflow-hidden relative" style={{height:100}}>
+          <PreviewImage slot="step-3" alt="Generated output" className="w-full h-full" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-transparent flex flex-col justify-center pl-3">
+            <p className="text-[9px] text-white/50 uppercase tracking-widest mb-0.5">New Arrival</p>
+            <p className="text-[13px] font-black text-white leading-tight">Summer Collection</p>
+            <span className="mt-1.5 px-2 py-0.5 bg-white text-black text-[8px] font-bold rounded-full w-fit">Shop Now →</span>
+          </div>
+        </div>
+        <div className="flex gap-2 mb-3">
+          <div className="flex-1 h-7 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center"><span className="text-[9px] text-gray-400">↓ Download</span></div>
+          <div className="flex-1 h-7 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center"><span className="text-[9px] text-gray-400">✎ Edit</span></div>
+          <div className="flex-1 h-7 rounded-lg bg-[var(--accent)] flex items-center justify-center"><span className="text-[9px] font-bold text-white">↑ Publish</span></div>
+        </div>
+        <div className="flex gap-1.5">
+          {["Facebook","Instagram","WhatsApp"].map(p => (
+            <span key={p} className="flex-1 text-center py-1 rounded-md bg-white/[0.04] border border-white/[0.06] text-[9px] text-gray-500">{p}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function MarketingPage() {
   const router = useRouter();
-  const [activeNavState, setActiveNavState] = useState<NavItemId>("home");
-  const activeNav = activeNavState;
-  const setActiveNav = (id: NavItemId) => {
-    setActiveNavState(id);
-    const params = new URLSearchParams(searchParams?.toString() ?? "");
-    params.set("view", id);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  };
-  const isInitialMount = useRef(true);
-  useEffect(() => {
-    const view = searchParams?.get("view");
-    if (view && VALID_NAV_IDS.includes(view as NavItemId)) {
-      setActiveNavState(view as NavItemId);
-      if (view !== "home") {
-        setLeftSidebarVisible(true);
-      }
-    }
-    isInitialMount.current = false;
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- only on mount
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>("16:9");
-  const [slides, setSlides] = useState<Slide[]>([]);
-  const [autoplay, setAutoplay] = useState(true);
-  const [autoplaySpeed, setAutoplaySpeed] = useState(5);
-  const [productName, setProductName] = useState("");
-  const [activeTab, setActiveTab] = useState<"create" | "editor">("create");
-  const [suggestedPrompt, setSuggestedPrompt] = useState<string | undefined>(undefined);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  const [createWorkflow, setCreateWorkflow] = useState<"generate" | "product">("generate");
-  const [selectedCreatePurpose, setSelectedCreatePurpose] = useState<ImagePurpose | null>("homepage_banner");
-  const [campaignPurposeType, setCampaignPurposeType] = useState<CampaignPurposeType>("general");
-  const [bannersRefreshTrigger, setBannersRefreshTrigger] = useState(0);
-  const [selectedEvent, setSelectedEvent] = useState<Celebration | null>(null);
-  const [brandPromptSuffix, setBrandPromptSuffix] = useState("");
-  const [batchListText, setBatchListText] = useState("");
-  const [batchGenerating, setBatchGenerating] = useState(false);
-  const [batchProgress, setBatchProgress] = useState("");
-  const [batchError, setBatchError] = useState<string | null>(null);
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
-  const [leftSidebarVisible, setLeftSidebarVisible] = useState(false);
 
-  useEffect(() => {
-    const stored = localStorage.getItem("rightSidebarOpen");
-    if (stored === "true") setRightSidebarOpen(true);
-  }, []);
-
-  useEffect(() => {
-    setBrandPromptSuffix(getBrandKit().brandPromptSuffix ?? "");
-  }, []);
-
-  useEffect(() => {
-    if (activeNav !== "home") {
-      setLeftSidebarVisible(true);
-    }
-  }, [activeNav]);
-
-  const addSlide = (slide: Slide, source?: "upload" | "generate") => {
-    setSlides((prev) => [...prev, slide]);
-    setActiveNav("create");
-    if (source === "upload") {
-      setActiveTab("editor");
-    }
-  };
-
-  const generateSlideId = () => `slide-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
-  const handleBatchGenerate = async () => {
-    const lines = batchListText
-      .split(/\n/)
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .slice(0, 15);
-    if (lines.length === 0) return;
-    setBatchGenerating(true);
-    setBatchError(null);
-    const campaignText = campaignPurposeType === "event" ? (selectedEvent?.name ?? productName) : productName;
-    const brandSuffix = getBrandPromptSuffix().trim() || undefined;
-    const slides: Slide[] = [];
-    try {
-      for (let i = 0; i < lines.length; i++) {
-        setBatchProgress(`${i + 1}/${lines.length}`);
-        const promptToSend = buildTextToImagePrompt(lines[i], aspectRatio, {
-          eventName: selectedEvent?.name,
-          campaignPurposeType,
-          campaignText,
-          brandPromptSuffix: brandSuffix,
-        });
-        const res = await fetch("/api/generate-image", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: promptToSend, aspectRatio }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Failed to generate image");
-        let imageUrl = data.imageUrl;
-        if (!imageUrl) throw new Error("No image in response");
-        if (!imageUrl.startsWith("data:")) {
-          const blob = await (await fetch(imageUrl)).blob();
-          imageUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = () => reject(reader.error);
-            reader.readAsDataURL(blob);
-          });
-        }
-        imageUrl = await resizeDataUrlToAspect(imageUrl, aspectRatio);
-        slides.push({ id: generateSlideId(), imageUrl, prompt: lines[i] });
-      }
-      setSlides(slides);
-      setActiveTab("editor");
-      setActiveNav("create");
-      setBatchListText("");
-    } catch (err) {
-      setBatchError(err instanceof Error ? err.message : "Batch generation failed");
-      setSlides(slides);
-      if (slides.length > 0) {
-        setActiveTab("editor");
-        setActiveNav("create");
-      }
-    } finally {
-      setBatchGenerating(false);
-      setBatchProgress("");
-    }
-  };
-
-  const handleSelectBanner = (bannerSlides: Slide[], bannerAspectRatio: string) => {
-    setSlides(bannerSlides);
-    setAspectRatio(bannerAspectRatio as AspectRatio);
-    setActiveTab("editor");
-    setActiveNav("create");
-  };
-
-  /** Open editor with a copy of the banner (new slide ids) so the original is not modified. */
-  const handleUseAsTemplate = (bannerSlides: Slide[], bannerAspectRatio: string) => {
-    setSlides(bannerSlides.map((s) => ({ ...s, id: generateSlideId() })));
-    setAspectRatio(bannerAspectRatio as AspectRatio);
-    setActiveTab("editor");
-    setActiveNav("create");
-  };
-
-  const handleSelectForEdit = (slide: Slide, aspectRatio: AspectRatio) => {
-    setSlides([slide]);
-    setAspectRatio(aspectRatio);
-    setActiveNav("create");
-    setActiveTab("editor");
-  };
-
-  /** Add a slide to the carousel and open editor (Duplicate / use as template from gallery). */
-  const handleAddToEditor = (slide: Slide, aspectRatio: AspectRatio) => {
-    setSlides((prev) => [...prev, slide]);
-    setAspectRatio(aspectRatio);
-    setActiveTab("editor");
-    setActiveNav("create");
-  };
-
-  const handleSelectAsset = (imageUrl: string) => {
-    // Add asset as a slide
-    const slide: Slide = {
-      id: `slide-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-      imageUrl,
-    };
-    addSlide(slide);
-  };
-
-  const handleNavChange = (id: NavItemId) => {
-    if (id === "home") {
-      setActiveNav(id);
-      setLeftSidebarVisible(false);
-    } else {
-      setLeftSidebarVisible(true);
-      setActiveNav(id);
-      if (id === "create") {
-        setActiveTab("create");
-      }
-    }
-  };
-
-  const handleOpenCreate = () => {
-    setLeftSidebarVisible(true);
-    setActiveNav("create");
-    setActiveTab("create");
-    const params = new URLSearchParams(searchParams?.toString() ?? "");
-    params.set("view", "create");
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  };
-
-  const removeSlide = (index: number) => {
-    setSlides((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const reorderSlides = (fromIndex: number, toIndex: number) => {
-    setSlides((prev) => {
-      const next = [...prev];
-      const [removed] = next.splice(fromIndex, 1);
-      next.splice(toIndex, 0, removed);
-      return next;
-    });
-  };
-
-  const updateSlide = (index: number, updates: Partial<Slide>) => {
-    setSlides((prev) =>
-      prev.map((s, i) => (i === index ? { ...s, ...updates } : s))
-    );
-  };
-
-  /** Get base64 + mime from a slide image URL for use as reference in image-to-image generation. Resizes to max 1024px to avoid API failures. */
-  const getImageBase64FromUrl = async (imageUrl: string): Promise<{ imageBase64: string; imageMimeType: string } | null> => {
-    if (!imageUrl?.trim()) return null;
-    let dataUrl: string | null = null;
-    if (imageUrl.startsWith("data:")) {
-      dataUrl = imageUrl;
-    } else if (imageUrl.startsWith("blob:")) {
-      try {
-        const response = await fetch(imageUrl);
-        const blob = await response.blob();
-        dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(blob);
-        });
-      } catch {
-        return null;
-      }
-    }
-    if (!dataUrl) return null;
-    try {
-      const resized = await resizeDataUrlToMaxDimension(dataUrl);
-      const match = resized.match(/^data:([^;]+);base64,(.+)$/);
-      if (match) return { imageMimeType: match[1], imageBase64: match[2] };
-    } catch {
-      const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-      if (match) return { imageMimeType: match[1], imageBase64: match[2] };
-    }
-    return null;
-  };
-
-  const handleRegenerateSlide = async (index: number, prompt: string, aspectRatio: AspectRatio) => {
-    const promptTrimmed = prompt.trim();
-    const slide = slides[index];
-    const referenceImage = slide?.imageUrl ? await getImageBase64FromUrl(slide.imageUrl) : null;
-    const campaignText = campaignPurposeType === "event" ? (selectedEvent?.name ?? productName) : productName;
-    const campaignOpts = { campaignPurposeType, campaignText, brandPromptSuffix: getBrandPromptSuffix().trim() || undefined };
-    const eventStyle = selectedEvent?.name?.trim() && campaignPurposeType !== "event" ? ` Style: festive for ${selectedEvent.name}.` : "";
-    const promptToSend = referenceImage
-      ? buildImageToImagePrompt(promptTrimmed + eventStyle, aspectRatio, campaignOpts)
-      : buildTextToImagePrompt(promptTrimmed, aspectRatio, { eventName: selectedEvent?.name, ...campaignOpts });
-    const body: { prompt: string; imageBase64?: string; imageMimeType?: string; aspectRatio?: AspectRatio } = { prompt: promptToSend, aspectRatio };
-    if (referenceImage) {
-      body.imageBase64 = referenceImage.imageBase64;
-      body.imageMimeType = referenceImage.imageMimeType;
-    }
-    const res = await fetch("/api/generate-image", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "Failed to generate image");
-    let imageUrl = data.imageUrl;
-    if (!imageUrl) throw new Error("No image in response");
-    if (!imageUrl.startsWith("data:")) {
-      const response = await fetch(imageUrl);
-      const blob = await response.blob();
-      imageUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-      });
-    }
-    const resizedImageUrl = await resizeDataUrlToAspect(imageUrl, aspectRatio);
-    updateSlide(index, { imageUrl: resizedImageUrl, prompt: promptTrimmed });
-  };
+  const authSlot = (
+    <div className="flex items-center gap-4">
+      <Show when="signed-out">
+        <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
+          <button className="text-[13px] font-medium text-white/70 hover:text-white transition-colors">Log in</button>
+        </SignInButton>
+        <SignUpButton mode="modal" fallbackRedirectUrl="/dashboard">
+          <button className="border border-white/60 rounded-full px-6 py-2 text-[13px] font-bold hover:bg-white hover:text-black transition-colors">Join</button>
+        </SignUpButton>
+      </Show>
+      <Show when="signed-in">
+        <button onClick={() => router.push("/dashboard")} className="border border-white/60 rounded-full px-6 py-2 text-[13px] font-bold hover:bg-white hover:text-black transition-colors">Open App</button>
+        <UserButton />
+      </Show>
+    </div>
+  );
 
   return (
-    <div className="h-screen flex flex-col text-white overflow-hidden" style={{ background: "var(--background)" }}>
-      <TopNav
-        onToggleRecent={
-          leftSidebarVisible
-            ? () => {
-                const next = !rightSidebarOpen;
-                setRightSidebarOpen(next);
-                localStorage.setItem("rightSidebarOpen", String(next));
-              }
-            : undefined
-        }
-        recentOpen={rightSidebarOpen}
-        onOpenCreate={!leftSidebarVisible ? handleOpenCreate : undefined}
+    <div className="min-h-screen w-full overflow-x-hidden text-white" style={{ backgroundColor: "#08070c" }}>
+
+      {/* ══ HERO with scrolling marquee ══ */}
+      <HeroSection
+        logoText="Pixmerce.ai"
+        navLinks={[
+          { href: "#formats", label: "Features" },
+          { href: "#how", label: "How it works" },
+          { href: "#templates", label: "Templates" },
+          { href: "/pricing", label: "Pricing" },
+          { href: "/enterprise", label: "Enterprise" },
+        ]}
+        avatarSrcList={[
+          "https://placehold.co/32x32/7c3aed/ffffff?text=A",
+          "https://placehold.co/32x32/6d28d9/ffffff?text=B",
+          "https://placehold.co/32x32/5b21b6/ffffff?text=C",
+          "https://placehold.co/32x32/4c1d95/ffffff?text=D",
+        ]}
+        userCount={2400}
+        title={"The AI design tool\nfor e-commerce."}
+        description="Turn raw product photos into stunning homepage banners, product cards, and social campaigns. Generate in seconds, publish everywhere."
+        placeholder="Enter your email"
+        ctaText="Start Free"
+        onSubmit={() => router.push("/dashboard")}
+        footerVersion="01. Pixmerce"
+        authSlot={authSlot}
       />
-      <div className="flex-1 flex overflow-hidden min-w-0">
-        {leftSidebarVisible && <LeftSidebar activeId={activeNav} onNavChange={handleNavChange} />}
 
-        <main className="flex-1 overflow-y-auto min-w-0">
-          {activeNav === "home" && <HomeView onNavigate={handleNavChange} />}
-          
-          {activeNav === "banners" && (
-            <BannersView
-              refreshTrigger={bannersRefreshTrigger}
-              onSelectBanner={handleSelectBanner}
-              onUseAsTemplate={handleUseAsTemplate}
-              onSelectAsset={handleSelectAsset}
-            />
-          )}
-
-          {activeNav === "gallery" && (
-            <GalleryView
-              onSelectForEdit={handleSelectForEdit}
-              onAddToEditor={handleAddToEditor}
-              refreshTrigger={bannersRefreshTrigger}
-            />
-          )}
-
-
-          {activeNav === "templates" && (
-            <div className="w-full min-w-0 px-8 py-10">
-              <h1 className="heading-page mb-2">Templates</h1>
-              <p className="text-gray-400 text-[15px] mb-6">Click any template to start creating with it.</p>
-              <TemplateGallery
-                selectedTemplateId={selectedTemplateId}
-                onSelectTemplate={(templateId, ratio, promptHint) => {
-                  setSelectedTemplateId(templateId);
-                  setAspectRatio(ratio);
-                  setSuggestedPrompt(promptHint);
-                  setActiveNav("create");
-                }}
-                onAddSlide={(slide, source) => {
-                  addSlide(slide, source);
-                  if (source === "generate") setActiveTab("editor");
-                }}
-                onSaveBanner={async (bannerSlides, bannerAspectRatio, imagePurpose) => {
-                  try {
-                    const { saveBanner, openDB } = await import("@/lib/indexedDB");
-                    const useIndexedDB = await openDB().then(() => true).catch(() => false);
-                    const newBanner = {
-                      id: `banner-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                      slides: bannerSlides,
-                      aspectRatio: bannerAspectRatio,
-                      createdAt: new Date().toISOString(),
-                      name: `Template: ${new Date().toLocaleDateString()}`,
-                      ...(imagePurpose && { imagePurpose }),
-                    };
-                    if (useIndexedDB) {
-                      await saveBanner(newBanner);
-                    } else {
-                      const stored = localStorage.getItem("savedBanners");
-                      const banners = stored ? JSON.parse(stored) : [];
-                      banners.push(newBanner);
-                      localStorage.setItem("savedBanners", JSON.stringify(banners));
-                    }
-                    setBannersRefreshTrigger((n) => n + 1);
-                  } catch { /* ignore */ }
-                }}
-              />
-            </div>
-          )}
-
-          {activeNav === "content-publish" && <ContentPublishView />}
-          {activeNav === "help" && <HelpView />}
-
-          {activeNav === "create" && (
-            <>
-            {activeTab === "create" ? (
-            <div className="w-full min-w-0 px-8 py-10">
-              <h1 className="heading-page mb-4">Create</h1>
-              <OnboardingBanner />
-              <p className="text-gray-400 text-[15px] mb-4">Pick a purpose for a pre-filled prompt, or use Product banner in the sidebar to create from a template.</p>
-              <div className="flex flex-wrap gap-2 mb-8">
-                {IMAGE_PURPOSE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => {
-                      setCreateWorkflow("generate");
-                      setSelectedCreatePurpose(opt.value);
-                      setSuggestedPrompt(undefined);
-                      setSelectedTemplateId(null);
-                      setAspectRatio(IMAGE_PURPOSE_ASPECT_RATIO[opt.value] as AspectRatio);
-                    }}
-                    className={`px-4 py-2 rounded-xl border text-left transition-all text-[14px] font-medium ${
-                      createWorkflow === "generate" && selectedCreatePurpose === opt.value
-                        ? "bg-[var(--accent)]/10 border-[var(--accent)]/60 text-white"
-                        : "bg-white/[0.04] border-white/[0.08] text-gray-300 hover:border-white/20 hover:text-white"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="mb-8 p-6 rounded-xl border border-white/[0.08] card-glass">
-                  {selectedEvent && (
-                    <div className="flex items-center justify-between gap-2 mb-4 p-2 rounded-lg bg-[#0066ff]/10 border border-[#0066ff]/30">
-                      <span className="text-sm text-gray-300">Using event: {selectedEvent.name}</span>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedEvent(null)}
-                        className="py-1 px-2 rounded text-xs font-medium text-[#0066ff] hover:bg-[#0066ff]/20"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  )}
-                  <h2 className="text-lg font-semibold text-white mb-4">Generate from prompt</h2>
-                  <p className="text-sm text-gray-400 mb-4">Choose a purpose above, edit the prompt below, then click Generate. Or upload an image—you&apos;ll go straight to the Banner Editor to add prompts per slide.</p>
-                  <ImageSourcePanel
-                    aspectRatio={aspectRatio}
-                    onAddSlide={addSlide}
-                    suggestedPrompt={suggestedPrompt}
-                    workflow="generate"
-                    initialImagePurpose={selectedCreatePurpose ?? undefined}
-                    selectedEvent={selectedEvent}
-                    campaignPurposeType={campaignPurposeType}
-                    campaignText={campaignPurposeType === "event" ? (selectedEvent?.name ?? productName) : productName}
-                    onSaveBanner={async (bannerSlides, bannerAspectRatio, imagePurpose) => {
-                      // Save banner automatically when image is generated
-                      try {
-                        const { saveBanner, openDB } = await import("@/lib/indexedDB");
-                        const useIndexedDB = await openDB().then(() => true).catch(() => false);
-                        
-                        const newBanner = {
-                          id: `banner-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-                          slides: bannerSlides,
-                          aspectRatio: bannerAspectRatio,
-                          createdAt: new Date().toISOString(),
-                          name: `Generated: ${new Date().toLocaleDateString()}`,
-                          ...(imagePurpose && { imagePurpose }),
-                        };
-                        
-                        if (useIndexedDB) {
-                          await saveBanner(newBanner);
-                        } else {
-                          const storedBanners = localStorage.getItem("savedBanners");
-                          const banners = storedBanners ? JSON.parse(storedBanners) : [];
-                          banners.push(newBanner);
-                          localStorage.setItem("savedBanners", JSON.stringify(banners));
-                        }
-                        // Trigger refresh of banners view
-                        setBannersRefreshTrigger(prev => prev + 1);
-                      } catch (err) {
-                        console.warn("Failed to auto-save banner:", err);
-                      }
-                    }}
-                  />
+      {/* ══ CONTENT FORMAT GRID ══ */}
+      <section id="formats" className="px-8 py-20">
+        <div className="mb-10">
+          <p className="text-[12px] font-bold text-[var(--accent)] uppercase tracking-widest mb-3">Create for any purpose</p>
+          <h2 className="text-[28px] sm:text-[36px] font-black text-white tracking-tight leading-tight mb-3">
+            Every content format your<br className="hidden sm:block" /> e-commerce team needs
+          </h2>
+          <p className="text-gray-500 text-[15px]">Drop your image into any format — AI handles the rest.</p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+          {[
+            { href: "/dashboard?view=create", slot: "homepage-banner", label: "Homepage Banner", desc: "Wide hero banners that drive traffic.", ratio: "16:9", aspectStyle: { aspectRatio: "16/9" }, overlayTitle: "New Season Collection", overlaySub: "Shop the latest looks" },
+            { href: "/dashboard?view=create", slot: "product-card",    label: "Product Card",    desc: "Highlight products with clean cards.",  ratio: "3:4",  aspectStyle: { aspectRatio: "3/4"  }, overlayTitle: "Premium Quality",       overlaySub: "₹2,499 · Free shipping" },
+            { href: "/dashboard?view=create", slot: "instagram-post",  label: "Instagram Post",  desc: "Eye-catching square posts for feed.",  ratio: "1:1",  aspectStyle: { aspectRatio: "1/1"  }, overlayTitle: "New Drop ✦",             overlaySub: "Shop via link in bio" },
+            { href: "/dashboard?view=create", slot: "sale-promo",      label: "Sale Promo",      desc: "Bold banners built to drive urgency.", ratio: "16:9", aspectStyle: { aspectRatio: "16/9" }, overlayTitle: "Flash Sale — 70% Off",  overlaySub: "24 hours only" },
+            { href: "/dashboard?view=create", slot: "email-header",    label: "Email Header",    desc: "Branded headers for campaigns.",       ratio: "3:1",  aspectStyle: { aspectRatio: "3/1"  }, overlayTitle: "Exclusive Member Offer", overlaySub: "For subscribers only" },
+            { href: "/dashboard?view=create", slot: "festival",        label: "Festival / Event", desc: "Themed seasonal creatives.",          ratio: "1:1",  aspectStyle: { aspectRatio: "1/1"  }, overlayTitle: "Diwali Sale 🪔",         overlaySub: "Celebrate with savings" },
+            { href: "/dashboard?view=templates", slot: "product-banner", label: "Product Banner", desc: "Combine product image with AI backgrounds.", ratio: "16:9", aspectStyle: { aspectRatio: "16/9" }, overlayTitle: "Crafted to Perfection", overlaySub: "Premium collection" },
+            { href: "/dashboard?view=content-publish", slot: "social-caption", label: "Social Caption & Blog", desc: "AI drafts captions, alt-text & blog copy.", ratio: "", aspectStyle: { aspectRatio: "1/1" }, overlayTitle: "AI-written caption ready", overlaySub: "Publish in one click" },
+          ].map((item) => (
+            <Link key={item.slot} href={item.href}
+              className="group text-left rounded-2xl border border-white/[0.07] bg-white/[0.02] hover:border-white/[0.18] hover:bg-white/[0.04] transition-all duration-200 overflow-hidden">
+              <div className="relative overflow-hidden" style={item.aspectStyle}>
+                <PreviewImage slot={item.slot} alt={item.label} className="w-full h-full" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
+                <div className="absolute inset-x-0 bottom-0 p-3">
+                  <p className="text-[10px] text-white/50 font-semibold mb-0.5">{item.overlaySub}</p>
+                  <p className="text-[13px] font-black text-white leading-tight">{item.overlayTitle}</p>
+                  <span className="mt-2 px-2.5 py-0.5 rounded-full bg-white/90 text-[9px] font-bold text-black inline-block">Shop Now →</span>
                 </div>
-
-              <div className="mb-8 p-6 rounded-xl border border-white/[0.08] card-glass">
-                <h3 className="heading-section mb-2">Batch from list</h3>
-                <p className="text-[14px] text-gray-400 mb-3">One prompt per line (max 15). Generates all then opens the editor.</p>
-                <textarea
-                  value={batchListText}
-                  onChange={(e) => setBatchListText(e.target.value)}
-                  placeholder="e.g.&#10;Summer sale hero&#10;Product spotlight&#10;Festive banner"
-                  rows={4}
-                  className="input-base resize-y mb-3"
-                  disabled={batchGenerating}
-                />
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={handleBatchGenerate}
-                    disabled={batchGenerating || !batchListText.trim()}
-                    className="btn-primary"
-                  >
-                    {batchGenerating ? `Generating… ${batchProgress}` : "Generate from list"}
-                  </button>
-                  <span className="text-[13px] text-gray-500">Uses current aspect ratio and Settings.</span>
-                </div>
-                {batchError && (
-                  <p className="mt-2 text-[13px] text-red-400" role="alert">{batchError}</p>
+                {item.ratio && (
+                  <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-md bg-black/60 border border-white/10 text-[10px] font-mono text-white/60 backdrop-blur-sm">{item.ratio}</span>
                 )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                <div className="p-6 rounded-xl border border-white/[0.08] card-glass hover:border-white/[0.15] transition-colors">
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="w-9 h-9 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-400 flex-shrink-0">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                    </span>
-                    <h3 className="heading-section">Celebration Banners</h3>
-                  </div>
-                  <p className="text-gray-400 text-[14px] mb-4">
-                    Pick a date and region to generate festive banners for holidays and celebrations.
-                  </p>
-                  <CalendarPanel
-                    onAddSlide={addSlide}
-                    productName={productName}
-                    selectedEvent={selectedEvent}
-                    onSelectEvent={setSelectedEvent}
-                    brandPromptSuffix={brandPromptSuffix}
-                  />
+                <div className="absolute inset-0 bg-[var(--accent)]/0 group-hover:bg-[var(--accent)]/10 transition-colors duration-200 flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <span className="px-4 py-2 rounded-xl bg-white/90 text-black text-[12px] font-bold flex items-center gap-1.5 shadow-lg">Create this <IconArrow /></span>
                 </div>
+              </div>
+              <div className="px-3.5 py-3">
+                <p className="text-[13px] font-bold text-white mb-0.5">{item.label}</p>
+                <p className="text-[11px] text-gray-500 leading-snug">{item.desc}</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
 
-                <div className="p-6 rounded-xl border border-white/[0.08] card-glass hover:border-white/[0.15] transition-colors">
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="w-9 h-9 rounded-lg bg-white/[0.07] flex items-center justify-center text-gray-300 flex-shrink-0">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
-                    </span>
-                    <h3 className="heading-section">Settings</h3>
-                  </div>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-[13px] text-gray-400 mb-2">Purpose for generation</label>
-                      <p className="text-[12px] text-gray-500 mb-2">Passed into every image generation (e.g. season, event, promotion).</p>
-                      <div className="flex flex-wrap gap-2">
-                        {(
-                          [
-                            { value: "season" as const, label: "Season" },
-                            { value: "event" as const, label: "Event" },
-                            { value: "promotion" as const, label: "Promotion" },
-                            { value: "general" as const, label: "General" },
-                          ] as const
-                        ).map(({ value, label }) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => setCampaignPurposeType(value)}
-                            className={`px-3 py-1.5 rounded-lg text-[13px] font-medium transition-colors ${
-                              campaignPurposeType === value
-                                ? "bg-[var(--accent)] text-white"
-                                : "bg-white/[0.05] border border-white/[0.1] text-gray-300 hover:border-white/20 hover:text-white"
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
+      {/* ══ HOW IT WORKS ══ */}
+      <section id="how" className="px-8 py-16">
+        <div className="mb-10">
+          <p className="text-[12px] font-bold text-[var(--accent)] uppercase tracking-widest mb-2">Simple 3-step workflow</p>
+          <h2 className="text-[28px] sm:text-[36px] font-black text-white tracking-tight">How it works</h2>
+          <p className="text-gray-500 text-[15px] mt-2">From product image to published banner in under a minute</p>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {[
+            { num: "01", title: "Upload your product & choose a purpose", desc: "Drop in your product image and pick what you're creating — homepage banner, product card, Instagram post, or sale promo. The right aspect ratio and a pre-filled prompt are set automatically.", cta: "Go to Create", href: "/dashboard?view=create", visual: <StepUploadMockup />, accentColor: "text-[var(--accent)]", borderColor: "border-[var(--accent)]/30", bgColor: "bg-[var(--accent)]/5" },
+            { num: "02", title: "Pick a template & edit the prompt", desc: "Choose from professional e-commerce templates or your own custom ones. The prompt is pre-filled based on your purpose — edit it to match your brand voice, campaign, or seasonal event.", cta: "Browse Templates", href: "/dashboard?view=templates", visual: <StepPromptMockup />, accentColor: "text-purple-400", borderColor: "border-purple-500/30", bgColor: "bg-purple-500/5" },
+            { num: "03", title: "Generate, edit & publish to platforms", desc: "AI generates your banner instantly. Review it in the editor, make tweaks, then download or publish directly to Facebook, Instagram, or WhatsApp — with optional IST scheduling.", cta: "Go to Publish", href: "/dashboard?view=content-publish", visual: <StepOutputMockup />, accentColor: "text-emerald-400", borderColor: "border-emerald-500/30", bgColor: "bg-emerald-500/5" },
+          ].map((step) => (
+            <div key={step.num} className="rounded-2xl border border-white/[0.07] bg-white/[0.02] overflow-hidden">
+              <div className="p-4 pb-0">{step.visual}</div>
+              <div className="p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <span className={`flex-shrink-0 w-8 h-8 rounded-full border ${step.borderColor} ${step.bgColor} flex items-center justify-center text-[12px] font-black ${step.accentColor}`}>{step.num}</span>
+                  <div className="h-px flex-1 border-t border-white/[0.06]" />
+                </div>
+                <p className="text-[14px] font-bold text-white mb-2 leading-snug">{step.title}</p>
+                <p className="text-[12px] text-gray-500 leading-relaxed mb-3">{step.desc}</p>
+                <Link href={step.href} className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${step.accentColor} hover:underline`}>
+                  {step.cta} <IconArrow />
+                </Link>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ══ TEMPLATES SECTION ══ */}
+      <section id="templates" className="px-8 py-12">
+        <div className="rounded-2xl border border-white/[0.08] overflow-hidden" style={{background:"linear-gradient(120deg,#0a0f1e 0%,#0e1b38 50%,#0a0f1e 100%)"}}>
+          <div className="flex flex-col lg:flex-row items-center gap-8 p-8">
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-bold text-[var(--accent)] uppercase tracking-widest mb-3">Templates</p>
+              <h3 className="text-[22px] sm:text-[28px] font-black text-white leading-tight mb-3">
+                Use built-in templates<br />or create your own
+              </h3>
+              <p className="text-gray-400 text-[14px] leading-relaxed mb-6 max-w-md">
+                Choose from professionally designed e-commerce templates for every platform and format. Or save your own brand-specific templates — reusable by your entire content team.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Link href="/dashboard?view=templates" className="btn-primary text-[14px] px-6 py-2.5 flex items-center gap-2">
+                  <IconTemplate /> Browse Templates
+                </Link>
+                <Link href="/dashboard?view=templates" className="btn-secondary text-[14px] px-6 py-2.5">
+                  + Create Custom Template
+                </Link>
+              </div>
+            </div>
+            <div className="flex-shrink-0 w-full lg:w-[40%]">
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  {slot:"homepage-banner", label:"Homepage Hero", ar:"16:9"},
+                  {slot:"instagram-post",  label:"Instagram",     ar:"1:1"},
+                  {slot:"product-card",    label:"Product Card",  ar:"3:4"},
+                  {slot:"sale-promo",      label:"Sale Strip",    ar:"16:9"},
+                  {slot:"festival",        label:"Festival",      ar:"1:1"},
+                  {slot:"",               label:"+ Custom",       ar:"any", custom:true},
+                ].map((t) => (
+                  t.custom ? (
+                    <Link key="custom" href="/dashboard?view=templates"
+                      className="aspect-square rounded-xl border-2 border-dashed border-[var(--accent)]/30 bg-[var(--accent)]/5 flex flex-col items-center justify-center hover:border-[var(--accent)]/60 transition-colors">
+                      <p className="text-[20px] text-[var(--accent)]/50">+</p>
+                      <p className="text-[9px] text-[var(--accent)] font-bold">Custom</p>
+                    </Link>
+                  ) : (
+                    <div key={t.slot} className="relative aspect-square rounded-xl overflow-hidden">
+                      <PreviewImage slot={t.slot} alt={t.label} className="w-full h-full" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex flex-col justify-end p-1.5">
+                        <p className="text-[9px] font-bold text-white/90 leading-tight">{t.label}</p>
+                        <p className="text-[8px] text-white/40 font-mono">{t.ar}</p>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-[13px] text-gray-400 mb-2">Default purpose</label>
-                      <select
-                        value={selectedCreatePurpose ?? "homepage_banner"}
-                        onChange={(e) => {
-                          const v = e.target.value as ImagePurpose | "";
-                          setSelectedCreatePurpose(v || "homepage_banner");
-                          if (v) {
-                            setAspectRatio(IMAGE_PURPOSE_ASPECT_RATIO[v] as AspectRatio);
-                            setSuggestedPrompt(undefined);
-                          }
-                        }}
-                        className="input-base"
-                      >
-                        {IMAGE_PURPOSE_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="text-[12px] text-gray-500 mt-1">Pre-fills the prompt when you generate.</p>
-                    </div>
-                    <div>
-                      <label className="block text-[13px] text-gray-400 mb-2">
-                        Campaign / product text
-                        {campaignPurposeType !== "general" && (
-                          <span className="text-[12px] text-gray-500 ml-1">
-                            (for {campaignPurposeType === "event" ? "Event: use calendar event or type below" : campaignPurposeType})
-                          </span>
-                        )}
-                      </label>
-                      <input
-                        type="text"
-                        value={productName}
-                        onChange={(e) => setProductName(e.target.value)}
-                        placeholder={campaignPurposeType === "event" ? "e.g. Independence Day" : "e.g. Summer sale 20%"}
-                        className="input-base"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[13px] text-gray-400 mb-2">Aspect ratio</label>
-                      <select
-                        value={aspectRatio}
-                        onChange={(e) => setAspectRatio(e.target.value as AspectRatio)}
-                        className="input-base"
-                      >
-                        {ASPECT_RATIOS.map(({ value, label }) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="pt-2 border-t border-white/[0.08]">
-                      <label className="block text-[13px] text-gray-400 mb-2">Brand kit</label>
-                      <input
-                        type="text"
-                        value={brandPromptSuffix}
-                        onChange={(e) => {
-                          const v = e.target.value;
-                          setBrandPromptSuffix(v);
-                          setBrandKit({ ...getBrandKit(), brandPromptSuffix: v.trim() || undefined });
-                        }}
-                        placeholder="e.g. Brand: Acme, blue theme"
-                        className="input-base"
-                      />
-                      <p className="text-[12px] text-gray-500 mt-1">Appended to every generation prompt.</p>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={autoplay}
-                          onChange={(e) => setAutoplay(e.target.checked)}
-                          className="w-4 h-4 rounded"
-                        />
-                        <span className="text-[14px]">Autoplay</span>
-                      </label>
-                      {autoplay && (
-                        <label className="flex items-center gap-2">
-                          <span className="text-[14px] text-gray-400">Speed</span>
-                          <input
-                            type="number"
-                            min={2}
-                            max={15}
-                            value={autoplaySpeed}
-                            onChange={(e) => setAutoplaySpeed(Number(e.target.value))}
-                            className="w-20 input-base py-1.5"
-                          />
-                        </label>
-                      )}
-                    </div>
-                    <div className="pt-2 border-t border-white/[0.08] space-y-2">
-                      <button
-                        type="button"
-                        onClick={() => setActiveNav("banners")}
-                        className="btn-secondary w-full text-[13px] py-2"
-                      >
-                        Open Banners
-                      </button>
-                      {slides.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSlides([]);
-                            setActiveTab("create");
-                          }}
-                          className="btn-danger w-full text-[13px] py-2"
-                        >
-                          Clear current slides
-                        </button>
-                      )}
-                    </div>
+                  )
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ══ PUBLISH EVERYWHERE ══ */}
+      <section id="publish" className="px-8 py-12">
+        <div className="flex flex-col lg:flex-row gap-10 items-center">
+          <div className="flex-1 min-w-0">
+            <p className="text-[12px] font-bold text-purple-400 uppercase tracking-widest mb-3">Multi-platform publishing</p>
+            <h3 className="text-[22px] sm:text-[28px] font-black text-white leading-tight mb-3">
+              Create once.<br />Publish everywhere.
+            </h3>
+            <p className="text-gray-400 text-[14px] leading-relaxed mb-6 max-w-lg">
+              Upload or generate an image, and AI drafts your social caption, alt text, and blog description. Schedule posts in IST and publish directly to Facebook, Instagram, and WhatsApp — no third-party tools needed.
+            </p>
+            <div className="flex flex-wrap gap-3 mb-6">
+              {[
+                {icon:"f",  label:"Facebook",  color:"#1877f2"},
+                {icon:"ig", label:"Instagram", color:"#e1306c"},
+                {icon:"w",  label:"WhatsApp",  color:"#25d366"},
+              ].map(p => (
+                <div key={p.label} className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/[0.08] bg-white/[0.03]">
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black text-white flex-shrink-0" style={{background:p.color}}>{p.icon}</span>
+                  <span className="text-[13px] font-semibold text-gray-300">{p.label}</span>
+                </div>
+              ))}
+            </div>
+            <Link href="/dashboard?view=content-publish" className="btn-primary text-[14px] px-6 py-2.5 flex items-center gap-2 w-fit">
+              <IconSend /> Go to Publish
+            </Link>
+          </div>
+          <div className="flex-shrink-0 w-full lg:w-[36%]">
+            <div className="rounded-2xl border border-white/[0.08] bg-[#0e0e14] overflow-hidden">
+              <div className="flex items-center gap-1.5 px-3 py-2 bg-[#1a1a26] border-b border-white/[0.06]">
+                {["#ff5f57","#febc2e","#28c840"].map(c => <span key={c} className="w-2.5 h-2.5 rounded-full" style={{background:c}} />)}
+                <span className="ml-2 text-[10px] text-gray-600">Schedule post</span>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="w-full rounded-xl overflow-hidden relative" style={{height:110}}>
+                  <PreviewImage slot="homepage-banner" alt="Post preview" className="w-full h-full" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-black/60 to-transparent flex flex-col justify-center pl-3">
+                    <p className="text-[10px] text-white/50 mb-0.5">Preview</p>
+                    <p className="text-[13px] font-black text-white">Summer Sale ✦</p>
+                    <span className="mt-1 px-2 py-0.5 bg-white text-black text-[9px] font-bold rounded-full w-fit">Shop Now →</span>
                   </div>
                 </div>
-              </div>
-
-              {slides.length > 0 && (
-                <div className="mt-8">
-                  <button
-                    onClick={() => setActiveTab("editor")}
-                    className="btn-primary px-6 py-3"
-                  >
-                    View Editor ({slides.length} {slides.length === 1 ? "slide" : "slides"})
-                  </button>
+                <div className="space-y-1.5">
+                  <div className="h-7 rounded-lg bg-white/[0.04] border border-white/[0.06] px-2 flex items-center gap-2">
+                    <span className="text-gray-500"><IconCalendar /></span>
+                    <span className="text-[10px] text-gray-500">Saturday, Feb 22, 2025</span>
+                  </div>
+                  <div className="h-7 rounded-lg bg-white/[0.04] border border-white/[0.06] px-2 flex items-center gap-2">
+                    <span className="text-gray-500 text-[11px]">⏰</span>
+                    <span className="text-[10px] text-gray-500">10:00 AM IST</span>
+                  </div>
                 </div>
-              )}
-            </div>
-            ) : (
-            <div className="w-full min-w-0 px-8 py-10">
-              {/* Header row */}
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="heading-page">Banner Editor</h2>
-                  {slides.length > 0 && (
-                    <p className="text-[14px] text-gray-400 mt-1">
-                      {slides.length} {slides.length === 1 ? "slide" : "slides"}
-                    </p>
-                  )}
+                <div className="flex gap-1.5">
+                  {["Facebook","Instagram","WhatsApp"].map(p => (
+                    <div key={p} className="flex-1 py-1.5 rounded-lg bg-[var(--accent)]/10 border border-[var(--accent)]/20 text-center text-[9px] font-medium text-[var(--accent)]">{p}</div>
+                  ))}
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setActiveTab("create");
-                      setCreateWorkflow("generate");
-                    }}
-                    className="btn-primary"
-                  >
-                    + Add slide from AI
-                  </button>
-                  <button
-                    onClick={() => setActiveTab("create")}
-                    className="btn-secondary"
-                  >
-                    ← Back to Create
-                  </button>
-                </div>
-              </div>
-
-              {selectedEvent && (
-                <div className="flex items-center justify-between gap-2 mb-6 p-3 rounded-xl bg-[var(--accent)]/10 border border-[var(--accent)]/25">
-                  <span className="text-[14px] text-gray-300">Using event: <span className="text-white font-medium">{selectedEvent.name}</span></span>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedEvent(null)}
-                    className="py-1 px-2 rounded text-[13px] font-medium text-[var(--accent)] hover:bg-[var(--accent)]/10"
-                  >
-                    Clear
-                  </button>
-                </div>
-              )}
-
-              {/* Two-column editor layout — carousel takes 2/3, export panel 1/3 */}
-              <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6 items-start">
-                {/* Carousel / slides area */}
-                <div className="rounded-xl border border-white/[0.08] card-glass p-6 min-w-0">
-                  {slides.length > 0 && (
-                    <div className="mb-4 p-3 rounded-xl bg-[var(--accent)]/[0.07] border border-[var(--accent)]/20">
-                      <p className="text-[13px] text-gray-400">
-                        <strong className="text-gray-200">Tip:</strong> Generated images are saved to{" "}
-                        <button
-                          onClick={() => setActiveNav("gallery")}
-                          className="text-[var(--accent)] hover:underline"
-                        >
-                          Gallery
-                        </button>
-                        . Use &ldquo;Add slide from AI&rdquo; to add more slides.
-                      </p>
-                    </div>
-                  )}
-                  <BannerCarousel
-                    slides={slides}
-                    aspectRatio={aspectRatio}
-                    autoplay={autoplay}
-                    autoplaySpeed={autoplaySpeed}
-                    onRemoveSlide={removeSlide}
-                    onReorderSlides={reorderSlides}
-                    onUpdateSlide={updateSlide}
-                    onRegenerateSlide={handleRegenerateSlide}
-                    editable
-                  />
-                </div>
-
-                {/* Export / settings sidebar */}
-                <div className="space-y-4 flex-shrink-0">
-                  <ExportPanel
-                    slides={slides}
-                    aspectRatio={aspectRatio}
-                    autoplay={autoplay}
-                    autoplaySpeed={autoplaySpeed}
-                    onSaveBanner={() => {
-                      setBannersRefreshTrigger((n) => n + 1);
-                    }}
-                  />
-                </div>
+                <div className="w-full py-2 rounded-xl bg-[var(--accent)] text-center text-[11px] font-bold text-white">Schedule Post</div>
               </div>
             </div>
-            )}
-            </>
-          )}
-        </main>
+          </div>
+        </div>
+      </section>
 
-        {activeNav !== "home" && (
-          <RightSidebar
-            currentSlides={slides}
-            onSelectBanner={handleSelectBanner}
-            onUseAsTemplate={handleUseAsTemplate}
-            bannersRefreshTrigger={bannersRefreshTrigger}
-            isOpen={rightSidebarOpen}
-            onToggle={() => {
-              const next = !rightSidebarOpen;
-              setRightSidebarOpen(next);
-              localStorage.setItem("rightSidebarOpen", String(next));
-            }}
-          />
-        )}
-      </div>
+      {/* ══ CTA FOOTER BANNER ══ */}
+      <section className="px-8 py-16">
+        <div className="rounded-2xl p-10 text-center relative overflow-hidden" style={{background:"linear-gradient(120deg,#0d1b3e 0%,#1a2a6c 50%,#0d1b3e 100%)"}}>
+          <div className="absolute inset-0 opacity-5">
+            <PreviewImage slot="hero-main" alt="" className="w-full h-full" style={{objectFit:"cover"}} />
+          </div>
+          <div className="relative z-10">
+            <h2 className="text-[24px] sm:text-[32px] font-black text-white mb-3 tracking-tight">Ready to transform your content workflow?</h2>
+            <p className="text-gray-400 text-[15px] mb-8 max-w-lg mx-auto">Join e-commerce teams using Pixmerce.ai to create, schedule, and publish high-converting content in seconds.</p>
+            <div className="flex flex-wrap justify-center gap-4">
+              <SignUpButton mode="modal" fallbackRedirectUrl="/dashboard">
+                <button className="btn-primary text-[15px] px-8 py-3.5 flex items-center gap-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+                  Start Creating Now
+                </button>
+              </SignUpButton>
+              <Link href="/dashboard?view=templates" className="btn-secondary text-[15px] px-8 py-3.5">Explore Templates</Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ══ FOOTER ══ */}
+      <footer className="border-t border-white/[0.06] bg-[#04070d] pt-14 pb-10 px-8">
+        <div className="flex flex-col md:flex-row justify-between gap-10 mb-10">
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-7 h-7 rounded-lg" style={{background:"var(--gradient-btn)"}}></div>
+              <span className="text-[16px] font-black text-white">Pixmerce<span className="text-gradient">.ai</span></span>
+            </div>
+            <p className="text-[13px] text-gray-500 max-w-xs leading-relaxed">The AI content engine for e-commerce teams.</p>
+          </div>
+          <div className="flex flex-wrap gap-12">
+            {[
+              { title: "Product", links: [{ label: "AI Generator", href: "/dashboard" }, { label: "Templates", href: "/dashboard?view=templates" }, { label: "Publisher", href: "/dashboard?view=content-publish" }, { label: "Pricing", href: "/pricing" }] },
+              { title: "Company", links: [{ label: "Enterprise", href: "/enterprise" }, { label: "Contact", href: "/contact" }] },
+              { title: "Legal", links: [{ label: "Privacy", href: "#" }, { label: "Terms", href: "#" }] },
+            ].map(col => (
+              <div key={col.title}>
+                <h4 className="text-[12px] font-bold text-white mb-4 uppercase tracking-wider">{col.title}</h4>
+                <ul className="space-y-3">
+                  {col.links.map(l => (
+                    <li key={l.label}><Link href={l.href} className="text-[13px] text-gray-500 hover:text-[var(--accent)] transition-colors">{l.label}</Link></li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="border-t border-white/[0.06] pt-8">
+          <p className="text-[12px] text-gray-600">© 2026 Pixmerce Inc. All rights reserved.</p>
+        </div>
+      </footer>
+
     </div>
   );
 }

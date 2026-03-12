@@ -76,7 +76,6 @@ function IconHelp() {
 }
 
 const navItems: NavItem[] = [
-  { id: "home", label: "Home", icon: <IconHome /> },
   { id: "create", label: "Create", icon: <IconSparkles /> },
   { id: "templates", label: "Templates", icon: <IconLayout /> },
   { id: "banners", label: "Banners", icon: <IconFolder /> },

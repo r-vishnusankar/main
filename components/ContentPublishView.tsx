@@ -17,6 +17,7 @@ import {
   TEMPLATES,
   type BlogTemplateId,
 } from "@/components/BlogTemplates";
+import SchedulePostModal, { type SchedulePostPayload } from "@/components/SchedulePostModal";
 
 async function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
   return new Promise((resolve, reject) => {
@@ -45,6 +46,7 @@ const PLATFORM_OPTIONS: { value: ContentPostPlatform; label: string }[] = [
   { value: "facebook", label: "Facebook" },
   { value: "instagram", label: "Instagram" },
   { value: "whatsapp", label: "WhatsApp" },
+  { value: "linkedin", label: "LinkedIn" },
   { value: "blog", label: "Blog Page" },
 ];
 
@@ -85,11 +87,22 @@ interface DescribeResponse {
 }
 
 export default function ContentPublishView() {
+  // ── Content mode ──────────────────────────────────────────────────────────
+  const [contentMode, setContentMode] = useState<"with_image" | "text_only">("with_image");
+  const [textTopic, setTextTopic] = useState("");
+  const [textTone, setTextTone] = useState("professional");
+  const [generatingText, setGeneratingText] = useState(false);
+  const [textGenerateError, setTextGenerateError] = useState<string | null>(null);
+
+  // ── Image ─────────────────────────────────────────────────────────────────
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [context, setContext] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const [triggeringCron, setTriggeringCron] = useState(false);
+
+  // ── Content fields ────────────────────────────────────────────────────────
   const [socialCaption, setSocialCaption] = useState("");
   const [altText, setAltText] = useState("");
   const [blogDescription, setBlogDescription] = useState("");
@@ -108,6 +121,7 @@ export default function ContentPublishView() {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [scheduleGenerateThenPost, setScheduleGenerateThenPost] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [blogTemplate, setBlogTemplate] = useState<BlogTemplateId>("card");
   const [blogHeadline, setBlogHeadline] = useState("");
@@ -264,6 +278,28 @@ export default function ContentPublishView() {
     setBlogCta(post.blogCta ?? "");
   };
 
+  const handleGenerateTextContent = async () => {
+    if (!textTopic.trim()) return;
+    setGeneratingText(true);
+    setTextGenerateError(null);
+    try {
+      const res = await fetch("/api/generate-post-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: textTopic.trim(), tone: textTone }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Generation failed");
+      setSocialCaption(data.socialCaption ?? "");
+      setBlogDescription(data.blogDescription ?? "");
+      if (Array.isArray(data.hashtags)) setHashtags(data.hashtags);
+    } catch (err) {
+      setTextGenerateError(err instanceof Error ? err.message : "Generation failed");
+    } finally {
+      setGeneratingText(false);
+    }
+  };
+
   const clearForm = () => {
     setEditingId(null);
     setImageFile(null);
@@ -288,6 +324,8 @@ export default function ContentPublishView() {
     setBlogBody("");
     setBlogCta("");
     setBlogGenerateError(null);
+    setTextTopic("");
+    setTextGenerateError(null);
   };
 
   const handleGenerateImage = async () => {
@@ -411,8 +449,8 @@ export default function ContentPublishView() {
       return;
     }
 
-    const imageUrl = imagePreviewUrl ?? "";
-    if (!imageUrl.trim()) return;
+    const imageUrl = contentMode === "text_only" ? "" : (imagePreviewUrl ?? "");
+    if (contentMode === "with_image" && !imageUrl.trim()) return;
     const hasContent =
       platform === "blog"
         ? blogHeadline.trim() || blogBody.trim()
@@ -539,8 +577,8 @@ export default function ContentPublishView() {
   };
 
   const handlePublishFromForm = async () => {
-    const imageUrl = imagePreviewUrl ?? "";
-    if (!imageUrl.trim()) {
+    const imageUrl = contentMode === "text_only" ? "" : (imagePreviewUrl ?? "");
+    if (contentMode === "with_image" && !imageUrl.trim()) {
       setPublishError("Add an image first (upload or create).");
       return;
     }
@@ -556,7 +594,7 @@ export default function ContentPublishView() {
     setPublishError(null);
     try {
       let finalImageUrl = imageUrl;
-      if (imageFile) finalImageUrl = await fileToDataUrl(imageFile);
+      if (contentMode === "with_image" && imageFile) finalImageUrl = await fileToDataUrl(imageFile);
 
       if (platform === "blog") {
         const id = editingId ?? generateId();
@@ -630,26 +668,246 @@ export default function ContentPublishView() {
     }
   };
 
-  const canSave =
-    imagePreviewUrl &&
-    (platform === "blog"
-      ? blogHeadline.trim() || blogBody.trim()
-      : socialCaption.trim() || blogDescription.trim());
-  const canPreview =
-    imagePreviewUrl &&
-    (platform === "blog"
-      ? blogHeadline.trim() || blogBody.trim()
-      : socialCaption.trim() || blogDescription.trim());
+  const handleSchedule = async (payload: SchedulePostPayload) => {
+    const id = `job-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const now = new Date().toISOString();
+
+    if (payload.mode === "auto_generate") {
+      const res = await fetch("/api/schedule", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "auto_generate",
+          id,
+          imagePrompt: payload.imagePrompt,
+          autoGenerateType: payload.autoGenerateType,
+          aspectRatio: payload.aspectRatio ?? "1:1",
+          tone: payload.tone ?? "professional",
+          platforms: payload.platforms,
+          scheduledAt: payload.scheduledAt,
+          createdAt: now,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Schedule failed");
+
+      // Save a draft record locally for visibility in the posts list
+      await saveContentPost({
+        id,
+        imageUrl: "",
+        socialCaption: `[Auto-${payload.autoGenerateType === "caption_only" ? "text" : "gen"}] ${payload.imagePrompt ?? ""}`.slice(0, 100),
+        altText: "",
+        blogDescription: "",
+        hashtags: [],
+        platform: (payload.platforms[0] ?? "facebook") as ContentPostPlatform,
+        scheduledAt: payload.scheduledAt,
+        status: "scheduled",
+        createdAt: now,
+        imagePrompt: payload.imagePrompt,
+        tone: payload.tone,
+        platforms: payload.platforms,
+      });
+      await loadPosts();
+      return;
+    }
+
+    // mode === "use_existing"
+    const imageUrl = payload.imageUrl ?? imagePreviewUrl ?? "";
+    if (!imageUrl) throw new Error("No image selected for scheduling");
+
+    // Schedule on server
+    const res = await fetch("/api/schedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "post",
+        id,
+        imageUrl,
+        socialCaption: payload.socialCaption ?? socialCaption,
+        altText: payload.altText ?? altText,
+        blogDescription: payload.blogDescription ?? blogDescription,
+        platform: payload.platforms[0] ?? platform,
+        scheduledAt: payload.scheduledAt,
+        createdAt: now,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Schedule failed");
+
+    // Save locally too
+    await saveContentPost({
+      id,
+      imageUrl,
+      socialCaption: payload.socialCaption ?? socialCaption,
+      altText: payload.altText ?? altText,
+      blogDescription: payload.blogDescription ?? blogDescription,
+      hashtags,
+      platform: (payload.platforms[0] ?? platform) as ContentPostPlatform,
+      scheduledAt: payload.scheduledAt,
+      status: "scheduled",
+      createdAt: now,
+      platforms: payload.platforms,
+    });
+    await loadPosts();
+  };
+
+  const handleTriggerScheduler = async () => {
+    setTriggeringCron(true);
+    try {
+      const res = await fetch("/api/cron/publish-scheduled", {
+        headers: { Authorization: "Bearer local_test_secret" },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Trigger failed");
+
+      // Sync results back to local IndexedDB
+      if (Array.isArray(data.results)) {
+        for (const res of data.results) {
+          if (res.success) {
+            await updateContentPost(res.id, {
+              status: "published",
+              publishedAt: new Date().toISOString(),
+              ...(res.generatedContent || {}),
+            });
+          } else {
+            await updateContentPost(res.id, {
+              status: "failed",
+              failureReason: res.error || "Unknown error during cron run",
+            });
+          }
+        }
+      }
+
+      await loadPosts();
+      alert(`Processed ${data.processed} jobs. See results in browser console.`);
+      console.log("Cron results:", data.results);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Trigger failed");
+    } finally {
+      setTriggeringCron(false);
+    }
+  };
+
+  const hasImageForMode = contentMode === "text_only" ? true : !!imagePreviewUrl;
+  const hasTextContent =
+    platform === "blog"
+      ? !!(blogHeadline.trim() || blogBody.trim())
+      : !!(socialCaption.trim() || blogDescription.trim());
+  const canSave = hasImageForMode && hasTextContent;
+  const canPreview = hasImageForMode && hasTextContent;
   const platformLabel = PLATFORM_OPTIONS.find((o) => o.value === platform)?.label ?? platform;
 
   return (
     <div className="w-full min-w-0 px-8 py-10">
       <h1 className="text-[22px] font-semibold text-white mb-2">Publish</h1>
       <p className="text-gray-400 text-[15px] mb-6 leading-relaxed">
-        Upload or create an image, add caption and content. Publish to Meta (Facebook/Instagram), WhatsApp, or build a Blog page with templates. Use AI to generate blog content from your image. Schedule in India (IST) or generate at scheduled time.
+        Create and publish to Facebook, Instagram, WhatsApp, LinkedIn, or build a Blog page. Choose between a visual post (image + caption) or a text-only post.
       </p>
 
+      {/* ── Content mode selector ──────────────────────────────── */}
+      <div className="flex gap-3 mb-6">
+        <button
+          type="button"
+          onClick={() => setContentMode("with_image")}
+          className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all border ${
+            contentMode === "with_image"
+              ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20"
+              : "bg-[#2a2a2a] border-white/10 text-gray-400 hover:border-white/20 hover:text-white"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+          </svg>
+          With Image
+        </button>
+        <button
+          type="button"
+          onClick={() => setContentMode("text_only")}
+          className={`flex items-center gap-2 px-5 py-3 rounded-xl font-medium transition-all border ${
+            contentMode === "text_only"
+              ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/20"
+              : "bg-[#2a2a2a] border-white/10 text-gray-400 hover:border-white/20 hover:text-white"
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h10" />
+          </svg>
+          Text Only
+        </button>
+      </div>
+
       <div className="space-y-6">
+
+        {/* ── Text-only topic + AI generate ───────────────────── */}
+        {contentMode === "text_only" && (
+          <section className="p-6 rounded-xl border border-white/[0.1] card-glass">
+            <h2 className="text-[17px] font-semibold text-white mb-1">1. Topic</h2>
+            <p className="text-sm text-gray-500 mb-4">Describe what this post is about. AI will write the caption, hashtags, and description for you.</p>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-gray-400 mb-1">Topic / idea</label>
+                <textarea
+                  value={textTopic}
+                  onChange={(e) => setTextTopic(e.target.value)}
+                  placeholder="e.g. Summer sale 50% off all products, ends Sunday"
+                  rows={3}
+                  className="w-full px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 resize-y"
+                />
+              </div>
+              <div className="flex flex-wrap gap-3 items-center">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-1">Tone</label>
+                  <select
+                    value={textTone}
+                    onChange={(e) => setTextTone(e.target.value)}
+                    className="px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white"
+                  >
+                    {["professional", "casual", "excited", "humorous", "inspirational", "urgent"].map((t) => (
+                      <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-end pb-0.5">
+                  <button
+                    type="button"
+                    disabled={!textTopic.trim() || generatingText}
+                    onClick={handleGenerateTextContent}
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:pointer-events-none rounded-lg text-white font-medium transition-colors flex items-center gap-2"
+                  >
+                    {generatingText ? (
+                      <>
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                        </svg>
+                        Generating…
+                      </>
+                    ) : (
+                      <>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                        Generate with AI
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+              {textGenerateError && <p className="text-sm text-red-400">{textGenerateError}</p>}
+              {contentMode === "text_only" && platform === "instagram" && (
+                <div className="flex items-center gap-2 text-amber-400 text-sm bg-amber-400/10 border border-amber-400/20 rounded-lg px-3 py-2">
+                  <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Instagram does not support text-only posts via API. Switch to another platform or add an image.
+                </div>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* ── Image section (only in with_image mode) ──────────── */}
+        {contentMode === "with_image" && (
         <section className="p-6 rounded-xl border border-white/[0.1] card-glass">
           <h2 className="text-[17px] font-semibold text-white mb-4">1. Image</h2>
           <div className="flex gap-2 mb-4">
@@ -786,9 +1044,11 @@ export default function ContentPublishView() {
             </>
           )}
         </section>
+        )}
+        {/* ── end with_image section ──────────────────────────── */}
 
         <section className="p-6 rounded-xl border border-[var(--border)] bg-[var(--card-bg)]">
-          <h2 className="text-[17px] font-semibold text-white mb-4">2. Edit content</h2>
+          <h2 className="text-[17px] font-semibold text-white mb-4">{contentMode === "text_only" ? "2. Edit content" : "2. Edit content"}</h2>
 
           {platform === "blog" && (
             <>
@@ -928,13 +1188,13 @@ export default function ContentPublishView() {
           </div>
           )}
 
-          <div className="flex flex-wrap gap-4 items-center mt-6">
+          <div className="flex flex-wrap gap-4 items-end mt-6">
               <div>
                 <label className="block text-sm text-gray-400 mb-1">Platform</label>
                 <select
                   value={platform}
                   onChange={(e) => setPlatform(e.target.value as ContentPostPlatform)}
-                  className="px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white"
+                  className="px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white min-w-[140px]"
                 >
                   {PLATFORM_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
@@ -961,37 +1221,24 @@ export default function ContentPublishView() {
               </button>
           </div>
           {platform !== "blog" && (
-            <div className="flex flex-wrap gap-4 items-end mt-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={scheduleGenerateThenPost}
-                  onChange={(e) => setScheduleGenerateThenPost(e.target.checked)}
-                  className="rounded bg-[#2a2a2a] border-[#3a3a3a]"
-                />
-                <span className="text-sm text-gray-400">Generate image at scheduled time then post</span>
-              </label>
-              <div>
-                <label className="block text-sm text-gray-400 mb-1">Date & time (India, IST)</label>
-                <input
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                  className="px-3 py-2 bg-[#2a2a2a] border border-[#3a3a3a] rounded-lg text-white"
-                />
-              </div>
+            <div className="flex flex-wrap gap-3 items-end mt-4">
               <button
                 type="button"
-                disabled={
-                  saving ||
-                  (scheduleGenerateThenPost
-                    ? !(createPrompt.trim() && socialCaption.trim() && scheduledAt)
-                    : !canSave)
-                }
+                disabled={saving || !canSave}
                 onClick={handleSavePost}
                 className="px-4 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-50 disabled:pointer-events-none rounded-lg text-white font-medium transition-colors"
               >
-                {saving ? "Saving…" : scheduleGenerateThenPost ? "Schedule generate & post" : editingId ? "Update post" : "Save post"}
+                {saving ? "Saving…" : editingId ? "Update post" : "Save post"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowScheduleModal(true)}
+                className="px-4 py-2 bg-[#0066ff] hover:bg-[#0052cc] rounded-lg text-white font-medium transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Schedule Post
               </button>
               {editingId && (
                 <button
@@ -1029,7 +1276,24 @@ export default function ContentPublishView() {
         </section>
 
         <section className="p-6 rounded-xl border border-white/[0.1] card-glass">
-          <h2 className="text-[17px] font-semibold text-white mb-4">Saved & scheduled posts</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-[17px] font-semibold text-white">Saved & scheduled posts</h2>
+            <button
+              onClick={handleTriggerScheduler}
+              disabled={triggeringCron}
+              className="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 rounded-lg text-indigo-400 text-xs font-medium transition-all flex items-center gap-2"
+              title="Manual trigger for local development (normally runs every minute on server)"
+            >
+              {triggeringCron ? (
+                <span className="w-3 h-3 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin" />
+              ) : (
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              )}
+              Trigger Scheduler
+            </button>
+          </div>
           {posts.length === 0 ? (
             <p className="text-gray-500 text-sm">No posts yet. Upload an image, analyze, edit, and save a post above.</p>
           ) : (
@@ -1039,12 +1303,30 @@ export default function ContentPublishView() {
                   key={post.id}
                   className="rounded-xl border border-white/[0.1] card-glass overflow-hidden hover:border-white/20 transition-colors flex flex-col"
                 >
-                  <div className="aspect-video bg-[var(--card-bg)] relative">
-                    <img
-                      src={post.imageUrl}
-                      alt={post.altText || "Post"}
-                      className="w-full h-full object-contain"
-                    />
+                  <div className="aspect-video bg-[var(--card-bg)] relative flex items-center justify-center overflow-hidden">
+                    {post.imageUrl ? (
+                      <img
+                        src={post.imageUrl}
+                        alt={post.altText || "Post"}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-2 text-gray-600 px-4 text-center">
+                        {post.status === "scheduled" && post.id.startsWith("job-") ? (
+                          <>
+                            <div className="w-8 h-8 rounded-full border-2 border-[#3a3a3a] border-t-indigo-500 animate-spin" />
+                            <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">AI Generating...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h10" />
+                            </svg>
+                            <span className="text-xs font-medium">Text post</span>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="p-4 flex flex-col gap-2 min-h-0">
                     <p className="text-sm text-gray-300 line-clamp-2" title={post.blogHeadline || post.socialCaption || post.blogDescription || ""}>
@@ -1052,10 +1334,26 @@ export default function ContentPublishView() {
                         ? post.blogHeadline || post.socialCaption || "Blog post"
                         : post.socialCaption || post.blogDescription || "No caption"}
                     </p>
-                    <p className="text-xs text-gray-500">
-                      {post.platform} · {post.status}
-                      {post.scheduledAt && ` · ${new Date(post.scheduledAt).toLocaleString()}`}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="text-gray-500 capitalize">{(post.platforms ?? [post.platform]).join(", ")}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full font-medium ${
+                        post.status === "published" ? "bg-green-500/15 text-green-400" :
+                        post.status === "scheduled" ? "bg-blue-500/15 text-blue-400" :
+                        post.status === "processing" ? "bg-yellow-500/15 text-yellow-400" :
+                        post.status === "failed" ? "bg-red-500/15 text-red-400" :
+                        "bg-gray-500/15 text-gray-400"
+                      }`}>
+                        {post.status}
+                      </span>
+                      {post.scheduledAt && (
+                        <span className="text-gray-500">{new Date(post.scheduledAt).toLocaleString()}</span>
+                      )}
+                    </div>
+                    {post.failureReason && (
+                      <p className="text-xs text-red-400 mt-0.5 line-clamp-1" title={post.failureReason}>
+                        {post.failureReason}
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-2 mt-1">
                       {post.status !== "published" && (
                         <button
@@ -1088,6 +1386,22 @@ export default function ContentPublishView() {
           )}
         </section>
       </div>
+
+      <SchedulePostModal
+        isOpen={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        onSchedule={handleSchedule}
+        existingPost={
+          imagePreviewUrl
+            ? {
+                imageUrl: imagePreviewUrl,
+                socialCaption,
+                altText,
+                blogDescription,
+              }
+            : undefined
+        }
+      />
 
       {showPreviewModal && (
         <div
@@ -1135,13 +1449,26 @@ export default function ContentPublishView() {
                       className="w-full rounded-lg border border-[#3a3a3a] object-contain max-h-[60vh] mb-4"
                     />
                   )}
-                  <div className="text-gray-300 whitespace-pre-wrap break-words">
+                  {!imagePreviewUrl && contentMode === "text_only" && (
+                    <div className="flex items-center gap-2 mb-4 text-sm text-gray-500 bg-[#2a2a2a] rounded-lg px-4 py-3 border border-[#3a3a3a]">
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h10" />
+                      </svg>
+                      Text-only post — no image
+                    </div>
+                  )}
+                  <div className="text-gray-300 whitespace-pre-wrap break-words text-[15px] leading-relaxed">
                     {socialCaption || blogDescription || "(No caption)"}
                   </div>
                   {hashtags.length > 0 && (
-                    <p className="text-sm text-gray-500 mt-2">
+                    <p className="text-sm text-indigo-400 mt-3">
                       #{hashtags.join(" #")}
                     </p>
+                  )}
+                  {blogDescription && socialCaption && (
+                    <div className="mt-4 pt-4 border-t border-[#3a3a3a] text-sm text-gray-400 whitespace-pre-wrap">
+                      {blogDescription}
+                    </div>
                   )}
                 </>
               )}

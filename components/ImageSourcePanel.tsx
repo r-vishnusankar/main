@@ -105,56 +105,59 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
   }, [workflow, initialImagePurpose]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith("image/")) return;
+    const fileList = e.target.files;
+    if (!fileList?.length) return;
+    const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (files.length === 0) return;
     setError(null);
     try {
-      const blob = await resizeImageToAspect(file, ratioNum);
-      const url = URL.createObjectURL(blob);
-      
-      // Convert to base64 and save to assets automatically
-      try {
-        const imageUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(blob);
-        });
+      for (const file of files) {
+        const blob = await resizeImageToAspect(file, ratioNum);
+        const url = URL.createObjectURL(blob);
 
-        const useIndexedDB = await openDB().then(() => true).catch(() => false);
-        if (useIndexedDB) {
-          await saveAsset({
-            id: `asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-            imageUrl,
-            name: file.name,
-            uploadedAt: new Date().toISOString(),
-            type: "upload",
+        // Convert to base64 and save to assets automatically
+        try {
+          const imageUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(blob);
           });
-        } else {
-          // Fallback to localStorage
-          const storedAssets = localStorage.getItem("savedAssets");
-          const assets = storedAssets ? JSON.parse(storedAssets) : [];
-          assets.push({
-            id: `asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-            imageUrl,
-            name: file.name,
-            uploadedAt: new Date().toISOString(),
-            type: "upload",
-          });
-          localStorage.setItem("savedAssets", JSON.stringify(assets));
+
+          const useIndexedDB = await openDB().then(() => true).catch(() => false);
+          if (useIndexedDB) {
+            await saveAsset({
+              id: `asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              imageUrl,
+              name: file.name,
+              uploadedAt: new Date().toISOString(),
+              type: "upload",
+            });
+          } else {
+            const storedAssets = localStorage.getItem("savedAssets");
+            const assets = storedAssets ? JSON.parse(storedAssets) : [];
+            assets.push({
+              id: `asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              imageUrl,
+              name: file.name,
+              uploadedAt: new Date().toISOString(),
+              type: "upload",
+            });
+            localStorage.setItem("savedAssets", JSON.stringify(assets));
+          }
+        } catch (err) {
+          console.warn("Failed to save uploaded image to assets:", err);
         }
-      } catch (err) {
-        console.warn("Failed to save uploaded image to assets:", err);
-      }
 
-      onAddSlide(
-        {
-          id: generateId(),
-          imageUrl: url,
-          imageBlob: blob,
-        },
-        "upload"
-      );
+        onAddSlide(
+          {
+            id: generateId(),
+            imageUrl: url,
+            imageBlob: blob,
+          },
+          "upload"
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     }
@@ -547,6 +550,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             onChange={handleUpload}
             className="hidden"
           />
@@ -555,7 +559,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
             onClick={() => fileInputRef.current?.click()}
             className="text-[#0066ff] hover:text-[#0052cc] underline"
           >
-            upload an image
+            upload images
           </button>
         </div>
       )}

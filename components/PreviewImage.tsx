@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 /**
  * Shows a beautiful gradient background INSTANTLY (always works, no network needed).
@@ -10,7 +10,7 @@ import { useState } from "react";
  * To override: drop a file into public/home-previews/ using the slot name (any format).
  */
 
-const SLOT_CONFIG: Record<string, { gradient: string; label: string; picsumSeed: string }> = {
+const SLOT_CONFIG: Record<string, { gradient: string; label: string; picsumSeed: string; imageUrl?: string }> = {
   "homepage-banner":  { gradient: "linear-gradient(135deg,#0f2a5c 0%,#1d4ed8 55%,#6d28d9 100%)", label: "Homepage Banner",  picsumSeed: "banner1" },
   "product-card":     { gradient: "linear-gradient(160deg,#0a2a1e 0%,#065f46 55%,#059669 100%)", label: "Product Card",     picsumSeed: "product2" },
   "instagram-post":   { gradient: "linear-gradient(135deg,#3b0764 0%,#7c3aed 55%,#db2777 100%)", label: "Instagram Post",   picsumSeed: "fashion3" },
@@ -19,7 +19,7 @@ const SLOT_CONFIG: Record<string, { gradient: string; label: string; picsumSeed:
   "festival":         { gradient: "linear-gradient(135deg,#451a03 0%,#b45309 55%,#f59e0b 100%)", label: "Festival",         picsumSeed: "festival6" },
   "product-banner":   { gradient: "linear-gradient(135deg,#1e1b4b 0%,#4338ca 55%,#7c3aed 100%)", label: "Product Banner",   picsumSeed: "shoes7" },
   "social-caption":   { gradient: "linear-gradient(135deg,#042f2e 0%,#0f766e 55%,#10b981 100%)", label: "Social Caption",   picsumSeed: "social8" },
-  "hero-main":        { gradient: "linear-gradient(135deg,#0f172a 0%,#1e3a8a 55%,#7c3aed 100%)", label: "Hero Main",        picsumSeed: "store9" },
+  "hero-main":        { gradient: "linear-gradient(135deg,#0f172a 0%,#1e3a8a 55%,#7c3aed 100%)", label: "Hero Main",        picsumSeed: "store9", imageUrl: "https://images.unsplash.com/photo-1607083206869-4c7672e72a8a?w=1200&h=675&fit=crop" },
   "hero-square-1":    { gradient: "linear-gradient(135deg,#1a0533 0%,#9333ea 55%,#ec4899 100%)", label: "Instagram",        picsumSeed: "fashion10" },
   "hero-portrait-1":  { gradient: "linear-gradient(160deg,#052e16 0%,#166534 55%,#16a34a 100%)", label: "Product",          picsumSeed: "product11" },
   "step-1":           { gradient: "linear-gradient(135deg,#0f172a 0%,#1e40af 100%)",             label: "Upload",           picsumSeed: "upload12" },
@@ -38,13 +38,20 @@ interface PreviewImageProps {
 export default function PreviewImage({ slot, alt, className = "", style, overlay }: PreviewImageProps) {
   const config = SLOT_CONFIG[slot] ?? { gradient: "linear-gradient(135deg,#1a1a2e,#16213e)", label: slot, picsumSeed: slot };
 
-  const [imgSrc, setImgSrc] = useState(`/home-previews/${slot}.jpg`);
+  const [imgSrc, setImgSrc] = useState(config.imageUrl ?? `/home-previews/${slot}.jpg`);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [triedLocal, setTriedLocal] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
+      setImgLoaded(true);
+    }
+  }, [imgSrc]);
 
   function handleError() {
     if (!triedLocal) {
-      // Local file not found → try picsum
+      // Local/override failed → try picsum
       setTriedLocal(true);
       setImgSrc(`https://picsum.photos/seed/${config.picsumSeed}/900/600`);
     }
@@ -59,6 +66,7 @@ export default function PreviewImage({ slot, alt, className = "", style, overlay
       {/* Gradient is always visible. Image fades in on top when loaded. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imgRef}
         key={imgSrc}
         src={imgSrc}
         alt={alt}

@@ -147,8 +147,8 @@ export async function deleteBanner(id: string): Promise<void> {
   });
 }
 
-export type ContentPostPlatform = "facebook" | "instagram" | "whatsapp" | "social" | "blog" | "shopify_blog";
-export type ContentPostStatus = "draft" | "scheduled" | "published";
+export type ContentPostPlatform = "facebook" | "instagram" | "whatsapp" | "social" | "blog" | "shopify_blog" | "linkedin";
+export type ContentPostStatus = "draft" | "scheduled" | "processing" | "published" | "failed";
 
 export interface StoredContentPostRecord {
   id: string;
@@ -173,6 +173,16 @@ export interface StoredContentPostRecord {
   blogBody?: string;
   /** Blog page: call-to-action */
   blogCta?: string;
+  /** Number of publish retry attempts */
+  retryCount?: number;
+  /** Reason for terminal failure */
+  failureReason?: string;
+  /** For auto_generate jobs: image prompt used */
+  imagePrompt?: string;
+  /** For auto_generate jobs: tone used */
+  tone?: string;
+  /** For auto_generate jobs: multiple platforms */
+  platforms?: string[];
 }
 
 export async function saveContentPost(post: StoredContentPostRecord): Promise<void> {

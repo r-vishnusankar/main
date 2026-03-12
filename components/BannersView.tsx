@@ -14,6 +14,7 @@ import {
   getStorageUsage,
 } from "@/lib/indexedDB";
 import ImageViewer from "@/components/ImageViewer";
+import { ExpandableGallery } from "@/components/ui/gallery-animation";
 import {
   type ImagePurpose,
   IMAGE_PURPOSE_OPTIONS,
@@ -24,7 +25,6 @@ import {
 import { buildImageToImagePrompt } from "@/lib/imagePrompt";
 import { getBrandPromptSuffix } from "@/lib/brandKit";
 import { getFavoriteIds, toggleFavorite } from "@/lib/favorites";
-import { getAspectRatioClass } from "@/lib/aspectRatioClass";
 
 interface StoredBanner {
   id: string;
@@ -64,7 +64,8 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
   const [generatePrompt, setGeneratePrompt] = useState(IMAGE_PURPOSE_PROMPTS.homepage_banner);
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
-  const [selectedReferenceImage, setSelectedReferenceImage] = useState<StoredAsset | null>(null);
+  const [selectedReferenceImages, setSelectedReferenceImages] = useState<StoredAsset[]>([]);
+  const MAX_REFERENCE_IMAGES = 20;
   const [numVariations, setNumVariations] = useState<1 | 2 | 3>(1);
   const [assetsFilterPurpose, setAssetsFilterPurpose] = useState<ImagePurpose | "all">("all");
   const [bannersFilterPurpose, setBannersFilterPurpose] = useState<ImagePurpose | "all">("all");
@@ -275,16 +276,23 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
   };
 
   const handleUploadAsset = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith("image/")) {
+    const fileList = e.target.files;
+    if (!fileList?.length) {
+      e.target.value = "";
+      return;
+    }
+
+    const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (files.length === 0) {
       e.target.value = "";
       return;
     }
 
     // Check file size (limit to 10MB for base64 conversion)
     const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-      setUploadError(`File is too large. Maximum size is ${(maxSize / 1024 / 1024).toFixed(0)}MB`);
+    const oversized = files.find((f) => f.size > maxSize);
+    if (oversized) {
+      setUploadError(`"${oversized.name}" is too large. Maximum size is ${(maxSize / 1024 / 1024).toFixed(0)}MB per file`);
       e.target.value = "";
       return;
     }
@@ -295,46 +303,41 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
     setGenerateError(null);
 
     try {
-      setUploadProgress(10);
-      
-      // Compress image to reduce storage size
-      const compressedFile = await compressImage(file);
-      setUploadProgress(30);
-      
-      const id = `asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-      
-      setUploadProgress(50);
-      
-      // Convert to base64 data URL so it persists across page reloads
-      const imageUrl = await fileToDataURL(compressedFile);
-      
-      setUploadProgress(70);
-      
-      const newAsset: StoredAsset = {
-        id,
-        imageUrl,
-        name: file.name,
-        uploadedAt: new Date().toISOString(),
-        type: "upload",
-      };
+      const newAssets: StoredAsset[] = [];
+      const total = files.length;
+      let completed = 0;
 
-      setUploadProgress(80);
+      for (const file of files) {
+        setUploadProgress(Math.round((completed / total) * 100));
 
-      const updatedAssets = [...assets, newAsset];
+        const compressedFile = await compressImage(file);
+        const id = `asset-${Date.now()}-${Math.random().toString(36).slice(2, 9)}-${completed}`;
+        const imageUrl = await fileToDataURL(compressedFile);
+
+        const newAsset: StoredAsset = {
+          id,
+          imageUrl,
+          name: file.name,
+          uploadedAt: new Date().toISOString(),
+          type: "upload",
+        };
+        newAssets.push(newAsset);
+        completed++;
+      }
 
       setUploadProgress(90);
 
+      const updatedAssets = [...assets, ...newAssets];
+
       try {
         if (useIndexedDB) {
-          // Save to IndexedDB (each asset stored by id; no overwrite)
-          await saveAsset(newAsset);
+          for (const asset of newAssets) {
+            await saveAsset(asset);
+          }
           setAssets(updatedAssets);
-
-          // Update storage info
           const usage = await getStorageUsage();
           setStorageInfo(usage);
         } else {
-          // Fallback to localStorage: save all assets (no truncation)
           localStorage.setItem(
             "savedAssets",
             JSON.stringify(updatedAssets.map(({ file, ...rest }) => rest))
@@ -342,7 +345,6 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
           setAssets(updatedAssets);
         }
       } catch (storageError: any) {
-        // Handle quota exceeded error (for localStorage fallback only)
         if (!useIndexedDB && (storageError.name === "QuotaExceededError" || storageError.message?.includes("quota"))) {
           const reducedAssets = updatedAssets.slice(-20);
           try {
@@ -365,8 +367,7 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
       }
 
       setUploadProgress(100);
-      
-      // Small delay to show completion
+
       setTimeout(() => {
         setUploading(false);
         setUploadProgress(0);
@@ -377,8 +378,8 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
         }
       }, 500);
     } catch (err) {
-      console.error("Failed to upload asset:", err);
-      setUploadError(err instanceof Error ? err.message : "Failed to upload image. Please try again.");
+      console.error("Failed to upload assets:", err);
+      setUploadError(err instanceof Error ? err.message : "Failed to upload images. Please try again.");
       setUploading(false);
       setUploadProgress(0);
     }
@@ -459,19 +460,20 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
       setGenerateError("Enter a prompt to generate an image");
       return;
     }
-    if (!selectedReferenceImage) {
-      setGenerateError("Select a reference image first");
+    if (selectedReferenceImages.length === 0) {
+      setGenerateError("Select at least one reference image");
       return;
     }
     setGenerateError(null);
     setGenerating(true);
     try {
-      // Convert reference image to base64
-      const { base64, mimeType } = await imageUrlToBase64(selectedReferenceImage.imageUrl);
-      
+      // Convert all reference images to base64
+      const imagesForApi = await Promise.all(
+        selectedReferenceImages.map((asset) => imageUrlToBase64(asset.imageUrl))
+      );
+
       // Generate multiple variations
       const generatedImages: StoredAsset[] = [];
-      
       const aspectRatio = IMAGE_PURPOSE_ASPECT_RATIO[generateImagePurpose];
       const promptToSend = buildImageToImagePrompt(trimmed, aspectRatio, {
         brandPromptSuffix: getBrandPromptSuffix().trim() || undefined,
@@ -482,8 +484,7 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: promptToSend,
-            imageBase64: base64,
-            imageMimeType: mimeType,
+            images: imagesForApi.map(({ base64, mimeType }) => ({ imageBase64: base64, imageMimeType: mimeType })),
             aspectRatio,
           }),
         });
@@ -565,7 +566,7 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
 
       // Reset form
       setGeneratePrompt("");
-      setSelectedReferenceImage(null);
+      setSelectedReferenceImages([]);
       setNumVariations(1);
     } catch (err) {
       setGenerateError(err instanceof Error ? err.message : "Generation failed");
@@ -663,86 +664,81 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
                   ★ Favorites
                 </button>
               </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredBanners.map((banner) => (
-                <div
-                  key={banner.id}
-                  className="rounded-xl border border-white/[0.1] card-glass overflow-hidden hover:border-white/20 transition-colors"
-                >
-                  {banner.slides[0] && (
-                    <div className={`${getAspectRatioClass(banner.aspectRatio)} bg-[var(--background)] relative overflow-hidden`}>
-                      <img
-                        src={banner.slides[0].imageUrl}
-                        alt={banner.name || "Banner"}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = "none";
-                          const parent = target.parentElement;
-                          if (parent) {
-                            parent.innerHTML = `
-                              <div class="w-full h-full flex items-center justify-center text-gray-500">
-                                <div class="text-center">
-                                  <span class="text-2xl block mb-1">📁</span>
-                                  <span class="text-xs">Image failed to load</span>
-                                </div>
-                              </div>
-                            `;
-                          }
-                        }}
-                        loading="lazy"
-                        style={{ minHeight: "100%", minWidth: "100%" }}
-                      />
-                    </div>
-                  )}
-                  <div className="p-4">
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <h3 className="font-semibold">{banner.name || "Untitled Banner"}</h3>
-                      {banner.imagePurpose && (
-                        <span className="px-2 py-0.5 rounded text-xs bg-[#0066ff]/20 text-[#0066ff]">
-                          {getPurposeLabel(banner.imagePurpose)}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-400 mb-2">
-                      {banner.slides.length} {banner.slides.length === 1 ? "slide" : "slides"} • {banner.aspectRatio}
-                    </p>
-                    <div className="flex flex-wrap gap-2 items-center">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleFavorite(banner.id)}
-                        className={`p-1.5 rounded ${favoriteIds.has(banner.id) ? "text-amber-400" : "text-gray-500 hover:text-amber-400"}`}
-                        title={favoriteIds.has(banner.id) ? "Unfavorite" : "Favorite"}
-                      >
-                        <svg className="w-4 h-4" fill={favoriteIds.has(banner.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => onSelectBanner(banner.slides, banner.aspectRatio)}
-                        className="px-3 py-1.5 bg-[#0066ff] text-white rounded text-sm hover:bg-[#0052cc] transition-colors"
-                      >
-                        Open
-                      </button>
-                      {onUseAsTemplate && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+              {filteredBanners.map((banner) => {
+                const slideImages = banner.slides.map((s) => s.imageUrl).filter(Boolean);
+                return (
+                  <div
+                    key={banner.id}
+                    className="rounded-xl border border-white/[0.1] card-glass overflow-hidden hover:border-white/20 transition-colors"
+                  >
+                    {slideImages.length > 0 ? (
+                      <div className="relative aspect-video w-full overflow-hidden border-b border-white/[0.05] bg-[#1a1a1a]">
+                        <img 
+                          src={slideImages[0]} 
+                          alt={banner.name || "Banner preview"} 
+                          className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                        />
+                        {slideImages.length > 1 && (
+                          <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/70 text-white text-[10px] font-medium tracking-wide rounded backdrop-blur-sm pointer-events-none shadow-sm">
+                            +{slideImages.length - 1} SLIDES
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="relative aspect-video w-full bg-[#1a1a1a] border-b border-white/[0.05] flex items-center justify-center text-gray-500">
+                        <span className="text-sm">No images</span>
+                      </div>
+                    )}
+                    <div className="p-4">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <h3 className="font-semibold">{banner.name || "Untitled Banner"}</h3>
+                        {banner.imagePurpose && (
+                          <span className="px-2 py-0.5 rounded text-xs bg-[#0066ff]/20 text-[#0066ff]">
+                            {getPurposeLabel(banner.imagePurpose)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400 mb-2">
+                        {banner.slides.length} {banner.slides.length === 1 ? "slide" : "slides"} • {banner.aspectRatio}
+                      </p>
+                      <div className="flex flex-wrap gap-2 items-center">
                         <button
-                          onClick={() => onUseAsTemplate(banner.slides, banner.aspectRatio)}
-                          className="px-3 py-1.5 bg-[#3a3a3a] text-gray-300 rounded text-sm hover:bg-[#4a4a4a] transition-colors"
-                          title="Open a copy in editor without changing the original"
+                          type="button"
+                          onClick={() => handleToggleFavorite(banner.id)}
+                          className={`p-1.5 rounded ${favoriteIds.has(banner.id) ? "text-amber-400" : "text-gray-500 hover:text-amber-400"}`}
+                          title={favoriteIds.has(banner.id) ? "Unfavorite" : "Favorite"}
                         >
-                          Use as template
+                          <svg className="w-4 h-4" fill={favoriteIds.has(banner.id) ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                          </svg>
                         </button>
-                      )}
-                      <button
-                        onClick={() => handleDeleteBanner(banner.id)}
-                        className="px-3 py-1.5 bg-[#3a3a3a] text-gray-300 rounded text-sm hover:bg-[#4a4a4a] transition-colors"
-                      >
-                        Delete
-                      </button>
+                        <button
+                          onClick={() => onSelectBanner(banner.slides, banner.aspectRatio)}
+                          className="px-3 py-1.5 bg-[#0066ff] text-white rounded text-sm hover:bg-[#0052cc] transition-colors"
+                        >
+                          Open
+                        </button>
+                        {onUseAsTemplate && (
+                          <button
+                            onClick={() => onUseAsTemplate(banner.slides, banner.aspectRatio)}
+                            className="px-3 py-1.5 bg-[#3a3a3a] text-gray-300 rounded text-sm hover:bg-[#4a4a4a] transition-colors"
+                            title="Open a copy in editor without changing the original"
+                          >
+                            Use as template
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteBanner(banner.id)}
+                          className="px-3 py-1.5 bg-[#3a3a3a] text-gray-300 rounded text-sm hover:bg-[#4a4a4a] transition-colors"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             </>
           )}
@@ -774,48 +770,56 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
                 </select>
               </div>
 
-              {/* Step 2: Select Reference Image */}
+              {/* Step 2: Select Reference Images (multi-select) */}
               <div className="mb-4">
-                <label className="block text-xs text-gray-400 mb-2">Step 2: Select a reference image</label>
-                {selectedReferenceImage ? (
-                  <div className="flex items-center gap-3 p-3 bg-[#1a1a1a] border border-[#0066ff] rounded-lg">
-                    <div className="w-16 h-16 bg-[#2a2a2a] rounded overflow-hidden flex-shrink-0">
-                      <img
-                        src={selectedReferenceImage.imageUrl}
-                        alt={selectedReferenceImage.name}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          const target = e.target as HTMLImageElement;
-                          target.style.display = "none";
-                          const parent = target.parentElement;
-                          if (parent) {
-                            parent.innerHTML = `
-                              <div class="w-full h-full flex items-center justify-center text-gray-500">
-                                <span class="text-xl">🖼️</span>
-                              </div>
-                            `;
+                <label className="block text-xs text-gray-400 mb-2">
+                  Step 2: Select reference images ({selectedReferenceImages.length}/{MAX_REFERENCE_IMAGES})
+                </label>
+                {selectedReferenceImages.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 p-3 bg-[#1a1a1a] border border-[#0066ff] rounded-lg">
+                    {selectedReferenceImages.map((asset) => (
+                      <div
+                        key={asset.id}
+                        className="flex items-center gap-2 bg-[#2a2a2a] rounded-lg overflow-hidden border border-[#3a3a3a]"
+                      >
+                        <div className="w-12 h-12 bg-[#1a1a1a] flex-shrink-0 overflow-hidden">
+                          <img
+                            src={asset.imageUrl}
+                            alt={asset.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              const target = e.target as HTMLImageElement;
+                              target.style.display = "none";
+                            }}
+                          />
+                        </div>
+                        <span className="text-xs text-gray-300 truncate max-w-[80px]">{asset.name}</span>
+                        <button
+                          onClick={() =>
+                            setSelectedReferenceImages((prev) => prev.filter((a) => a.id !== asset.id))
                           }
-                        }}
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{selectedReferenceImage.name}</p>
-                      <p className="text-xs text-gray-400">Reference image selected</p>
-                    </div>
-                    <button
-                      onClick={() => setSelectedReferenceImage(null)}
-                      className="px-3 py-1 bg-[#3a3a3a] text-gray-300 rounded text-xs hover:bg-[#4a4a4a] transition-colors flex-shrink-0"
-                    >
-                      Change
-                    </button>
+                          className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/20 rounded transition-colors flex-shrink-0"
+                          title="Remove"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                    {selectedReferenceImages.length < MAX_REFERENCE_IMAGES && (
+                      <span className="text-xs text-gray-500 self-center">
+                        Click images below to add more
+                      </span>
+                    )}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-400 italic">Click on an image below to select it as reference</p>
+                  <p className="text-sm text-gray-400 italic">Click on images below to select them as reference (1–20 images)</p>
                 )}
               </div>
 
               {/* Step 3: Enter Prompt (pre-filled from purpose, editable) */}
-              {selectedReferenceImage && (
+              {selectedReferenceImages.length > 0 && (
                 <>
                   <div className="mb-4">
                     <label className="block text-xs text-gray-400 mb-2">Step 3: Enter your prompt (editable)</label>
@@ -824,7 +828,7 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
                       value={generatePrompt}
                       onChange={(e) => setGeneratePrompt(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && !generating && handleGenerateImage()}
-                      placeholder="Describe how you want to transform the image..."
+                      placeholder="Describe how to combine or transform these images..."
                       className="w-full px-4 py-2 bg-[#1a1a1a] border border-[#3a3a3a] rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-[#0066ff] text-sm"
                       disabled={generating}
                     />
@@ -896,6 +900,7 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
                   ref={fileInputRef}
                   type="file"
                   accept="image/*"
+                  multiple
                   onChange={handleUploadAsset}
                   className="hidden"
                   disabled={uploading}
@@ -913,7 +918,7 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
                   ) : (
                     <>
                       <span>+</span>
-                      <span>Upload Image</span>
+                      <span>Upload Images</span>
                     </>
                   )}
                 </button>
@@ -959,7 +964,7 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
                 onClick={() => fileInputRef.current?.click()}
                 className="px-4 py-2 bg-[#0066ff] text-white rounded-lg hover:bg-[#0052cc] transition-colors"
               >
-                Upload Your First Image
+                Upload Images
               </button>
             </div>
           ) : (
@@ -994,19 +999,21 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
                 </button>
               </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {filteredAssets.map((asset) => (
+              {filteredAssets.map((asset) => {
+                const isSelected = selectedReferenceImages.some((a) => a.id === asset.id);
+                return (
                 <div
                   key={asset.id}
                   className={`bg-[#2a2a2a] rounded-xl border overflow-hidden transition-colors group cursor-pointer relative ${
-                    selectedReferenceImage?.id === asset.id
+                    isSelected
                       ? "border-[#0066ff] ring-2 ring-[#0066ff]/50"
                       : "border-[#3a3a3a] hover:border-[#4a4a4a]"
                   }`}
                   onClick={() => {
-                    if (!selectedReferenceImage) {
-                      setSelectedReferenceImage(asset);
-                    } else {
-                      onSelectAsset(asset.imageUrl);
+                    if (isSelected) {
+                      setSelectedReferenceImages((prev) => prev.filter((a) => a.id !== asset.id));
+                    } else if (selectedReferenceImages.length < MAX_REFERENCE_IMAGES) {
+                      setSelectedReferenceImages((prev) => [...prev, asset]);
                     }
                   }}
                 >
@@ -1055,15 +1062,15 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
                     />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center pointer-events-none">
                       <span className="opacity-0 group-hover:opacity-100 text-white text-sm font-medium transition-opacity text-center px-2">
-                        {selectedReferenceImage?.id === asset.id
-                          ? "Selected as reference"
-                          : selectedReferenceImage
-                          ? "Click to use"
-                          : "Click to select"}
+                        {isSelected
+                          ? "Click to remove"
+                          : selectedReferenceImages.length >= MAX_REFERENCE_IMAGES
+                          ? "Max reached"
+                          : "Click to add as reference"}
                       </span>
                     </div>
-                    {selectedReferenceImage?.id === asset.id && (
-                      <div className="absolute top-2 right-2 w-6 h-6 bg-[#0066ff] rounded-full flex items-center justify-center z-10 shadow-lg">
+                    {isSelected && (
+                      <div className="absolute top-2 right-2 w-6 h-6 bg-[#0066ff] rounded-full flex items-center justify-center z-10 shadow-lg" title="Reference selected">
                         <span className="text-white text-xs">✓</span>
                       </div>
                     )}
@@ -1099,7 +1106,8 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
                     </div>
                   </div>
                 </div>
-              ))}
+              );
+              })}
             </div>
             </>
           )}

@@ -98,6 +98,111 @@ export async function generateImageFromImage(
   throw new Error("No image in response");
 }
 
+/**
+ * Generate an image from multiple reference images + prompt (multi-image composition/blending).
+ * Uses Gemini 2.5 Flash Image multi-image support. All images are sent as parts before the text prompt.
+ */
+export async function generateImageFromMultipleImages(
+  apiKey: string,
+  prompt: string,
+  images: { base64: string; mimeType: string }[],
+  _aspectRatio?: string
+): Promise<string> {
+  if (!images?.length) {
+    throw new Error("At least one image is required for multi-image generation");
+  }
+  const ai = new GoogleGenAI({ apiKey });
+  const imageParts = images.map((img) => ({
+    inlineData: { mimeType: img.mimeType, data: img.base64 },
+  }));
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: [
+      {
+        role: "user",
+        parts: [...imageParts, { text: prompt }],
+      },
+    ],
+    config: {
+      responseModalities: ["TEXT", "IMAGE"],
+    },
+  });
+
+  const candidates = response.candidates;
+  if (!candidates?.length) {
+    const feedback = (response as { promptFeedback?: { blockReason?: string } }).promptFeedback;
+    const reason = feedback?.blockReason ? ` (${feedback.blockReason})` : "";
+    throw new Error(`No response from Gemini${reason}. Check your API key and quota.`);
+  }
+
+  const parts = candidates[0].content?.parts ?? [];
+  if (!parts.length) {
+    const finishReason = (candidates[0] as { finishReason?: string }).finishReason;
+    throw new Error(
+      `No content in response (${finishReason ?? "OTHER"}). ` +
+        "The model may have blocked the output. Try a simpler prompt or different reference images."
+    );
+  }
+
+  for (const part of parts) {
+    if (part.inlineData?.data) {
+      const mimeType = part.inlineData.mimeType ?? "image/png";
+      return `data:${mimeType};base64,${part.inlineData.data}`;
+    }
+  }
+
+  throw new Error("No image in response");
+}
+
+const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || "gemini-2.0-flash";
+
+/**
+ * Generate social media text content from a topic string (no image required).
+ * Returns a structured post object with caption, hashtags, and a longer description.
+ */
+export async function generatePostText(
+  apiKey: string,
+  topic: string,
+  tone: string = "professional"
+): Promise<{ socialCaption: string; hashtags: string[]; blogDescription: string }> {
+  const ai = new GoogleGenAI({ apiKey });
+  const prompt = `You are a social media content creator. Generate engaging post content for the following topic.
+
+Topic: ${topic}
+Tone: ${tone}
+
+Return ONLY valid JSON (no markdown, no code fences) in this exact shape:
+{
+  "socialCaption": "engaging social media caption (max 280 chars)",
+  "hashtags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+  "blogDescription": "longer description suitable for LinkedIn or a blog post (max 500 chars)"
+}`;
+
+  const response = await ai.models.generateContent({
+    model: TEXT_MODEL,
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+  });
+
+  const candidates = response.candidates;
+  if (!candidates?.length) {
+    throw new Error("No response from Gemini. Check your API key and quota.");
+  }
+
+  const parts = candidates[0].content?.parts ?? [];
+  const textPart = parts.find(
+    (p): p is { text: string } => "text" in p && typeof (p as { text?: string }).text === "string"
+  );
+  const raw = textPart?.text ?? "";
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("Gemini did not return valid JSON for text content.");
+  const parsed = JSON.parse(jsonMatch[0]);
+  return {
+    socialCaption: parsed.socialCaption ?? "",
+    hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags : [],
+    blogDescription: parsed.blogDescription ?? "",
+  };
+}
+
 const VISION_MODEL = process.env.GEMINI_VISION_MODEL || "gemini-2.0-flash";
 
 /**

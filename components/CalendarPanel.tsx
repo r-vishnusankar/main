@@ -230,12 +230,12 @@ export default function CalendarPanel({
     const isGeneratingThis = generatingFor === c.name;
     return (
       <li
-        className={`flex items-center justify-between gap-2 text-sm transition-colors rounded-lg ${
+        className={`flex items-center gap-3 text-sm transition-colors rounded-lg ${
           selected ? "bg-[#0066ff]/10 px-2 py-1" : compact ? "" : "px-0 py-0.5"
         }`}
       >
-        <span className="text-gray-300 truncate">{c.name}</span>
-        <span className="text-gray-500 text-xs flex-shrink-0">{dateLabel ?? formatEventDate(c.date)}</span>
+        <span className="text-gray-300 truncate min-w-0 flex-1">{c.name}</span>
+        <span className="text-gray-500 text-xs flex-shrink-0 w-16 text-right tabular-nums">{dateLabel ?? formatEventDate(c.date)}</span>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {/* Select — toggle button (outline ↔ filled blue) */}
           <button
@@ -360,10 +360,10 @@ export default function CalendarPanel({
       {/* Calendar grid */}
       <div className="grid grid-cols-7 gap-1 text-center text-xs">
         {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
-          <span key={d} className="font-medium text-gray-500 py-1">{d}</span>
+          <span key={d} className="font-medium text-gray-500 py-1 min-w-[28px]">{d}</span>
         ))}
         {Array.from({ length: firstDay }, (_, i) => (
-          <span key={`pad-${i}`} />
+          <span key={`pad-${i}`} className="min-w-[28px] min-h-[28px]" />
         ))}
         {Array.from({ length: daysInMonth }, (_, i) => {
           const day = i + 1;
@@ -374,13 +374,13 @@ export default function CalendarPanel({
               key={day}
               type="button"
               onClick={() => setSelectedDate({ month, day })}
-              className={`py-1.5 rounded text-sm transition-colors flex flex-col items-center gap-0.5 ${
+              className={`min-w-[28px] min-h-[28px] py-1.5 rounded text-sm transition-colors flex flex-col items-center justify-center gap-0.5 ${
                 isSelected ? "bg-[#0066ff] text-white" : "text-gray-300 hover:bg-[#3a3a3a]"
               } ${isToday(day) ? "ring-2 ring-[#0066ff]" : ""}`}
             >
-              <span>{day}</span>
+              <span className="tabular-nums">{day}</span>
               {hasEvent && (
-                <span className={`w-1 h-1 rounded-full ${isSelected ? "bg-white" : "bg-[#0066ff]"}`} />
+                <span className={`w-1 h-1 rounded-full flex-shrink-0 ${isSelected ? "bg-white" : "bg-[#0066ff]"}`} />
               )}
             </button>
           );

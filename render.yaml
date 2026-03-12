@@ -1,0 +1,69 @@
+# Render deployment blueprint for Pixmerce.ai
+# Docs: https://render.com/docs/blueprint-spec
+#
+# HOW TO USE:
+# 1. Push this repo to GitHub
+# 2. Go to render.com → New → Blueprint → select your repo
+# 3. Render will auto-create both the web service and the cron job below.
+# 4. Fill in the env vars marked sync: false in Render dashboard.
+
+services:
+  # ── Main Next.js web app ─────────────────────────────────────────────────────
+  - type: web
+    name: pixmerce-app
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Upstash Redis – get free at https://upstash.com → Create Database → REST API
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+      # Cron security – use same value in both web and cron services below
+      - key: CRON_SECRET
+        sync: false
+      # AI generation (Gemini)
+      - key: GOOGLE_GEMINI_API_KEY
+        sync: false
+      # Meta (Facebook / Instagram)
+      - key: META_PAGE_ID
+        sync: false
+      - key: META_PAGE_ACCESS_TOKEN
+        sync: false
+      # WhatsApp Cloud API
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_TO_PHONE
+        sync: false
+      # LinkedIn personal profile
+      - key: LINKEDIN_ACCESS_TOKEN
+        sync: false
+      - key: LINKEDIN_PERSON_URN
+        sync: false
+      # Shopify blog (optional)
+      - key: SHOPIFY_STORE
+        sync: false
+      - key: SHOPIFY_ACCESS_TOKEN
+        sync: false
+      - key: SHOPIFY_BLOG_ID
+        sync: false
+
+  # ── Render Cron Job – every 15 minutes ───────────────────────────────────────
+  # Replace YOUR_APP_URL with your actual Render web service URL after first deploy.
+  - type: cron
+    name: pixmerce-publish-cron
+    runtime: node
+    schedule: "*/15 * * * *"
+    buildCommand: echo "no build needed"
+    startCommand: >-
+      curl -s -X GET
+      -H "Authorization: Bearer $CRON_SECRET"
+      https://YOUR_APP_URL/api/cron/publish-scheduled
+    envVars:
+      - key: CRON_SECRET
+        sync: false
