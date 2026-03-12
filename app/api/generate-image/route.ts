@@ -145,6 +145,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ imageUrl, status: "success", textOnlyFallback, creditsRemaining: user.credits - 1 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Generation failed";
+    console.error("[generate-image] Error:", err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
