@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const bypassAuth = process.env.DISABLE_AUTH === 'true';
+    const bypassAuth = process.env.DISABLE_AUTH === 'true' || process.env.NEXT_PUBLIC_DISABLE_AUTH === 'true';
     let userId: string | null = bypassAuth ? null : (await auth()).userId;
     if (bypassAuth) userId = 'test-bypass-user';
     if (!userId) {

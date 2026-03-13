@@ -6,7 +6,8 @@ const isProtectedRoute = createRouteMatcher([
   '/api/generate-image(.*)'
 ])
 
-const bypassAuth = process.env.DISABLE_AUTH === 'true'
+// Edge runtime only has NEXT_PUBLIC_* vars; use both for flexibility
+const bypassAuth = process.env.DISABLE_AUTH === 'true' || process.env.NEXT_PUBLIC_DISABLE_AUTH === 'true'
 
 // Allowed origins for CORS when frontend (Netlify) and backend (Render) are split
 const corsOrigins = (process.env.CORS_ORIGINS ?? process.env.NEXT_PUBLIC_APP_URL ?? '')
@@ -35,7 +36,7 @@ export default clerkMiddleware(async (auth, req) => {
     }
   }
 
-  if (bypassAuth) return
+  if (bypassAuth) return NextResponse.next()
   if (isProtectedRoute(req)) {
     await auth.protect()
   }
