@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { ActivityDropdown } from "@/components/ui/activity-dropdown";
 import { Show, UserButton, SignInButton, useUser } from "@clerk/nextjs";
+import { apiFetch } from "@/lib/api";
 
 interface TopNavProps {
   onToggleRecent?: () => void;
@@ -27,7 +28,7 @@ export default function TopNav({ onToggleRecent, recentOpen, onOpenCreate }: Top
 
   useEffect(() => {
     if (!isPureHome && isLoaded && isSignedIn) {
-      fetch("/api/user/credits")
+      apiFetch("/api/user/credits")
         .then(res => res.json())
         .then(data => {
           if (typeof data.credits === "number") setCredits(data.credits);

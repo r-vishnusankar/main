@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef } from "react";
 import { useSearchParams, usePathname, useRouter } from "next/navigation";
@@ -20,6 +20,7 @@ import { resizeDataUrlToAspect, resizeDataUrlToMaxDimension } from "@/lib/resize
 import { type ImagePurpose, IMAGE_PURPOSE_OPTIONS, IMAGE_PURPOSE_ASPECT_RATIO } from "@/lib/imagePurpose";
 import { buildTextToImagePrompt, buildImageToImagePrompt, type CampaignPurposeType } from "@/lib/imagePrompt";
 import { getBrandPromptSuffix, getBrandKit, setBrandKit } from "@/lib/brandKit";
+import { apiFetch } from "@/lib/api";
 import type { Celebration } from "@/lib/calendar";
 
 const ASPECT_RATIOS: { value: AspectRatio; label: string }[] = [
@@ -119,7 +120,7 @@ export default function EditorPage() {
           campaignText,
           brandPromptSuffix: brandSuffix,
         });
-        const res = await fetch("/api/generate-image", {
+        const res = await apiFetch("/api/generate-image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt: promptToSend, aspectRatio }),
@@ -279,7 +280,7 @@ export default function EditorPage() {
       body.imageBase64 = referenceImage.imageBase64;
       body.imageMimeType = referenceImage.imageMimeType;
     }
-    const res = await fetch("/api/generate-image", {
+    const res = await apiFetch("/api/generate-image", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),

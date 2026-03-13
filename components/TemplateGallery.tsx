@@ -15,6 +15,7 @@ import {
 import { buildTextToImagePrompt, buildImageToImagePrompt } from "@/lib/imagePrompt";
 import { getBrandPromptSuffix } from "@/lib/brandKit";
 import { saveAsset, openDB } from "@/lib/indexedDB";
+import { apiFetch } from "@/lib/api";
 import {
   resizeImageToAspect,
   getAspectRatioNumber,
@@ -171,7 +172,7 @@ function ModalCreatePanel({
       const promptToSend = buildTextToImagePrompt(prompt.trim(), template.aspectRatio, {
         brandPromptSuffix: getBrandPromptSuffix().trim() || undefined,
       });
-      const res = await fetch("/api/generate-image", {
+      const res = await apiFetch("/api/generate-image", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: promptToSend, aspectRatio: template.aspectRatio, enhanceQuality }),
       });
@@ -203,7 +204,7 @@ function ModalCreatePanel({
       const promptToSend = buildImageToImagePrompt(bannerInstructions.trim(), template.aspectRatio, {
         brandPromptSuffix: getBrandPromptSuffix().trim() || undefined,
       });
-      const res = await fetch("/api/generate-image", {
+      const res = await apiFetch("/api/generate-image", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: promptToSend, imageBase64: base64, imageMimeType: mimeType, aspectRatio: template.aspectRatio, enhanceQuality }),
       });

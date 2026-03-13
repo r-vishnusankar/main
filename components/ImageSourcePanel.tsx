@@ -11,6 +11,7 @@ import {
 } from "@/lib/imagePurpose";
 import { buildTextToImagePrompt, buildImageToImagePrompt, type CampaignPurposeType } from "@/lib/imagePrompt";
 import { getBrandPromptSuffix } from "@/lib/brandKit";
+import { apiFetch } from "@/lib/api";
 
 function generateId(): string {
   return `slide-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
@@ -183,7 +184,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
       let data: { imageUrl?: string; error?: string; textOnlyFallback?: boolean } = {};
       for (let attempt = 0; attempt <= 1; attempt++) {
         try {
-          res = await fetch("/api/generate-image", {
+          res = await apiFetch("/api/generate-image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ prompt: promptToSend, aspectRatio, enhanceQuality }),
@@ -319,7 +320,7 @@ export default function ImageSourcePanel({ aspectRatio, onAddSlide, suggestedPro
       let data: { imageUrl?: string; error?: string; textOnlyFallback?: boolean } = {};
       for (let attempt = 0; attempt <= 1; attempt++) {
         try {
-          res = await fetch("/api/generate-image", {
+          res = await apiFetch("/api/generate-image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

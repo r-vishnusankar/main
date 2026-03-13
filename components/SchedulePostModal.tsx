@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { apiFetch } from "@/lib/api";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -189,7 +190,7 @@ export default function SchedulePostModal({
   // Load platform config status
   useEffect(() => {
     if (!isOpen) return;
-    fetch("/api/platforms-status")
+    apiFetch("/api/platforms-status")
       .then((r) => r.json())
       .then((data) => setConfiguredPlatforms(data))
       .catch(() => {});

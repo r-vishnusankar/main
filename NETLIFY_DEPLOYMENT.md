@@ -2,7 +2,7 @@
 
 Pixmerce supports **Netlify** and **Render**. The persistent scheduler uses **Upstash Redis** which works on both platforms.
 
-**Production URL (Netlify):** https://pixmerce-prod.netlify.app/
+**Production URL (Netlify):** https://pixmerce-ai.netlify.app/
 
 ---
 
@@ -68,6 +68,23 @@ Go to **Site Settings → Environment Variables** and add:
 The file `netlify/functions/scheduled-publish.mts` is a **Netlify Scheduled Function** that runs every 15 minutes automatically. No extra setup needed — it's bundled with your deployment.
 
 It calls your `/api/cron/publish-scheduled` endpoint which processes all due scheduled posts.
+
+### Split deployment: Frontend on Netlify, Backend on Render
+
+To host the Next.js frontend on Netlify and the API on Render:
+
+1. **Deploy the full app to Render** (backend) – use `render.yaml` or create a web service. Render will run both pages and API routes. Note your Render URL (e.g. `https://pixmerce-app.onrender.com`).
+
+2. **Deploy the full app to Netlify** (frontend) – Netlify will serve pages; API calls will be proxied to Render.
+
+3. **Netlify env vars** – add:
+   - `NEXT_PUBLIC_API_URL` = your Render backend URL (e.g. `https://pixmerce-app.onrender.com`)
+
+4. **Render env vars** – add (for CORS):
+   - `CORS_ORIGINS` = your Netlify URL (e.g. `https://pixmerce-ai.netlify.app`)
+   - Or `NEXT_PUBLIC_APP_URL` = same value
+
+5. Redeploy both after setting env vars.
 
 ### Redeploy after adding env vars
 

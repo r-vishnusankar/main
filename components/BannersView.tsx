@@ -25,6 +25,7 @@ import {
 import { buildImageToImagePrompt } from "@/lib/imagePrompt";
 import { getBrandPromptSuffix } from "@/lib/brandKit";
 import { getFavoriteIds, toggleFavorite } from "@/lib/favorites";
+import { apiFetch } from "@/lib/api";
 
 interface StoredBanner {
   id: string;
@@ -479,7 +480,7 @@ export default function BannersView({ onSelectBanner, onUseAsTemplate, onSelectA
         brandPromptSuffix: getBrandPromptSuffix().trim() || undefined,
       });
       for (let i = 0; i < numVariations; i++) {
-        const res = await fetch("/api/generate-image", {
+        const res = await apiFetch("/api/generate-image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

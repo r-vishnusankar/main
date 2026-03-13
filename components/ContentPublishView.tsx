@@ -18,6 +18,7 @@ import {
   type BlogTemplateId,
 } from "@/components/BlogTemplates";
 import SchedulePostModal, { type SchedulePostPayload } from "@/components/SchedulePostModal";
+import { apiFetch } from "@/lib/api";
 
 async function fileToBase64(file: File): Promise<{ base64: string; mimeType: string }> {
   return new Promise((resolve, reject) => {
@@ -174,7 +175,7 @@ export default function ContentPublishView() {
     setAnalyzeError(null);
     try {
       const { base64, mimeType } = await fileToBase64(imageFile);
-      const res = await fetch("/api/describe-image", {
+      const res = await apiFetch("/api/describe-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -221,7 +222,7 @@ export default function ContentPublishView() {
         setGeneratingBlog(false);
         return;
       }
-      const res = await fetch("/api/generate-blog-content", {
+      const res = await apiFetch("/api/generate-blog-content", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -283,7 +284,7 @@ export default function ContentPublishView() {
     setGeneratingText(true);
     setTextGenerateError(null);
     try {
-      const res = await fetch("/api/generate-post-text", {
+      const res = await apiFetch("/api/generate-post-text", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ topic: textTopic.trim(), tone: textTone }),
@@ -348,7 +349,7 @@ export default function ContentPublishView() {
       } else {
         promptToSend = buildTextToImagePrompt(trimmed, createAspectRatio);
       }
-      const res = await fetch("/api/generate-image", {
+      const res = await apiFetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -380,7 +381,7 @@ export default function ContentPublishView() {
       }
       const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
       if (match) {
-        const describeRes = await fetch("/api/describe-image", {
+        const describeRes = await apiFetch("/api/describe-image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ imageBase64: match[2], imageMimeType: match[1] }),
@@ -419,7 +420,7 @@ export default function ContentPublishView() {
           imageMimeType = b.mimeType;
         }
         const id = `gen-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-        const res = await fetch("/api/schedule", {
+        const res = await apiFetch("/api/schedule", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -504,7 +505,7 @@ export default function ContentPublishView() {
       }
       if (scheduledAtUTC) {
         try {
-          await fetch("/api/schedule", {
+          await apiFetch("/api/schedule", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -553,7 +554,7 @@ export default function ContentPublishView() {
         await loadPosts();
         return;
       }
-      const res = await fetch("/api/publish", {
+      const res = await apiFetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -625,7 +626,7 @@ export default function ContentPublishView() {
         return;
       }
 
-      const res = await fetch("/api/publish", {
+      const res = await apiFetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -673,7 +674,7 @@ export default function ContentPublishView() {
     const now = new Date().toISOString();
 
     if (payload.mode === "auto_generate") {
-      const res = await fetch("/api/schedule", {
+      const res = await apiFetch("/api/schedule", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -716,7 +717,7 @@ export default function ContentPublishView() {
     if (!imageUrl) throw new Error("No image selected for scheduling");
 
     // Schedule on server
-    const res = await fetch("/api/schedule", {
+    const res = await apiFetch("/api/schedule", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -754,7 +755,7 @@ export default function ContentPublishView() {
   const handleTriggerScheduler = async () => {
     setTriggeringCron(true);
     try {
-      const res = await fetch("/api/cron/publish-scheduled", {
+      const res = await apiFetch("/api/cron/publish-scheduled", {
         headers: { Authorization: "Bearer local_test_secret" },
       });
       const data = await res.json();

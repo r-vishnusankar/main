@@ -37,7 +37,13 @@ export async function POST(request: NextRequest) {
     if (!user) {
       const cUser = await currentUser();
       const email = cUser?.emailAddresses[0]?.emailAddress || `${userId}@placeholder.com`;
-      user = await prisma.user.create({ data: { id: userId, email: email, credits: 50 } });
+      // Check if user exists by email (e.g. same person, different Clerk id) to avoid unique constraint
+      user = await prisma.user.findUnique({ where: { email } });
+      if (user) {
+        userId = user.id; // Use existing user
+      } else {
+        user = await prisma.user.create({ data: { id: userId, email: email, credits: 50 } });
+      }
     }
 
     if (user.credits <= 0) {

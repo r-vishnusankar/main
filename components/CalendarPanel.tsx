@@ -13,6 +13,7 @@ import {
 } from "@/lib/calendar";
 import { saveAsset, openDB } from "@/lib/indexedDB";
 import { buildTextToImagePrompt } from "@/lib/imagePrompt";
+import { apiFetch } from "@/lib/api";
 import type { Slide } from "@/types/banner";
 
 function generateId(): string {
@@ -130,7 +131,7 @@ export default function CalendarPanel({
     setGenerating(true);
     setGeneratingFor(celebrationName);
     try {
-      const res = await fetch("/api/generate-image", {
+      const res = await apiFetch("/api/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt, aspectRatio: "16:9" }),
