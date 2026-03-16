@@ -1,55 +1,57 @@
-import { GoogleGenerativeAI, Part } from "@google/generative-ai";
+import { GoogleGenAI } from "@google/genai";
 
-const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.0-flash";
+const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || "gemini-2.0-flash";
+const VISION_MODEL = process.env.GEMINI_VISION_MODEL || "gemini-2.0-flash";
+
+// Force official Google endpoint to bypass Netlify AI Gateway hijacking
+const GOOGLE_API_HOST = "https://generativelanguage.googleapis.com";
+
+/**
+ * Helper to call Gemini API via fetch to bypass package-level redirects (like Netlify AI Gateway).
+ * This ensures the specialized 'gemini-2.5-flash-image' model works in all environments.
+ */
+async function callGeminiApi(apiKey: string, model: string, body: any) {
+  const url = `${GOOGLE_API_HOST}/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Gemini API Error (${res.status}): ${errorText}`);
+  }
+
+  return await res.json();
+}
 
 /**
  * Generate an image from a text prompt using Gemini image model.
  * Returns a data URL (data:image/png;base64,...) for the generated image.
- * Requires responseModalities: ["TEXT", "IMAGE"] so the API returns image output.
  */
 export async function generateImage(apiKey: string, prompt: string): Promise<string> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: MODEL });
-
-  const result = await model.generateContent({
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
+  const data = await callGeminiApi(apiKey, MODEL, {
+    contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
-      // @ts-ignore - responseModalities is a newer field
       responseModalities: ["TEXT", "IMAGE"],
     },
   });
 
-  const response = result.response;
-  const candidates = response.candidates;
-
-  if (!candidates?.length) {
-    const feedback = (response as any).promptFeedback;
-    const reason = feedback?.blockReason ? ` (${feedback.blockReason})` : "";
-    throw new Error(`No response from Gemini${reason}. Check your API key and quota.`);
-  }
-
-  const parts = candidates[0].content?.parts ?? [];
-  if (!parts.length) {
-    const finishReason = candidates[0].finishReason;
-    throw new Error(
-      `No content in response (${finishReason ?? "OTHER"}). ` +
-        "The model may have blocked the output (e.g. safety or policy). Try a simpler, generic prompt and avoid brand/character names."
-    );
-  }
-
+  const parts = data.candidates?.[0]?.content?.parts || [];
   for (const part of parts) {
     if (part.inlineData?.data) {
-      const mimeType = part.inlineData.mimeType ?? "image/png";
+      const mimeType = part.inlineData.mimeType || "image/png";
       return `data:${mimeType};base64,${part.inlineData.data}`;
     }
   }
 
-  throw new Error("No image in response");
+  throw new Error("No image in response. Your prompt may have been blocked or the model is unavailable.");
 }
 
 /**
  * Generate a banner from a product image + instructions (image editing).
- * Uses the uploaded image as the base. Requires responseModalities so the API returns an image.
  */
 export async function generateImageFromImage(
   apiKey: string,
@@ -58,10 +60,7 @@ export async function generateImageFromImage(
   imageMimeType: string = "image/png",
   _aspectRatio?: string
 ): Promise<string> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: MODEL });
-
-  const result = await model.generateContent({
+  const data = await callGeminiApi(apiKey, MODEL, {
     contents: [
       {
         role: "user",
@@ -72,32 +71,14 @@ export async function generateImageFromImage(
       },
     ],
     generationConfig: {
-      // @ts-ignore
       responseModalities: ["TEXT", "IMAGE"],
     },
   });
 
-  const response = result.response;
-  const candidates = response.candidates;
-
-  if (!candidates?.length) {
-    const feedback = (response as any).promptFeedback;
-    const reason = feedback?.blockReason ? ` (${feedback.blockReason})` : "";
-    throw new Error(`No response from Gemini${reason}. Check your API key and quota.`);
-  }
-
-  const parts = candidates[0].content?.parts ?? [];
-  if (!parts.length) {
-    const finishReason = candidates[0].finishReason;
-    throw new Error(
-      `No content in response (${finishReason ?? "OTHER"}). ` +
-        "The model may have blocked the output. Try a simpler prompt or a different product image."
-    );
-  }
-
+  const parts = data.candidates?.[0]?.content?.parts || [];
   for (const part of parts) {
     if (part.inlineData?.data) {
-      const mimeType = part.inlineData.mimeType ?? "image/png";
+      const mimeType = part.inlineData.mimeType || "image/png";
       return `data:${mimeType};base64,${part.inlineData.data}`;
     }
   }
@@ -106,7 +87,7 @@ export async function generateImageFromImage(
 }
 
 /**
- * Generate an image from multiple reference images + prompt (multi-image composition/blending).
+ * Generate an image from multiple reference images + prompt.
  */
 export async function generateImageFromMultipleImages(
   apiKey: string,
@@ -114,17 +95,11 @@ export async function generateImageFromMultipleImages(
   images: { base64: string; mimeType: string }[],
   _aspectRatio?: string
 ): Promise<string> {
-  if (!images?.length) {
-    throw new Error("At least one image is required for multi-image generation");
-  }
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: MODEL });
-
-  const imageParts: Part[] = images.map((img) => ({
+  const imageParts = images.map((img) => ({
     inlineData: { mimeType: img.mimeType, data: img.base64 },
   }));
 
-  const result = await model.generateContent({
+  const data = await callGeminiApi(apiKey, MODEL, {
     contents: [
       {
         role: "user",
@@ -132,32 +107,14 @@ export async function generateImageFromMultipleImages(
       },
     ],
     generationConfig: {
-      // @ts-ignore
       responseModalities: ["TEXT", "IMAGE"],
     },
   });
 
-  const response = result.response;
-  const candidates = response.candidates;
-
-  if (!candidates?.length) {
-    const feedback = (response as any).promptFeedback;
-    const reason = feedback?.blockReason ? ` (${feedback.blockReason})` : "";
-    throw new Error(`No response from Gemini${reason}. Check your API key and quota.`);
-  }
-
-  const parts = candidates[0].content?.parts ?? [];
-  if (!parts.length) {
-    const finishReason = candidates[0].finishReason;
-    throw new Error(
-      `No content in response (${finishReason ?? "OTHER"}). ` +
-        "The model may have blocked the output. Try a simpler prompt or different reference images."
-    );
-  }
-
+  const parts = data.candidates?.[0]?.content?.parts || [];
   for (const part of parts) {
     if (part.inlineData?.data) {
-      const mimeType = part.inlineData.mimeType ?? "image/png";
+      const mimeType = part.inlineData.mimeType || "image/png";
       return `data:${mimeType};base64,${part.inlineData.data}`;
     }
   }
@@ -165,19 +122,14 @@ export async function generateImageFromMultipleImages(
   throw new Error("No image in response");
 }
 
-const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || "gemini-2.0-flash";
-
 /**
- * Generate social media text content from a topic string (no image required).
+ * Generate social media text content from a topic string.
  */
 export async function generatePostText(
   apiKey: string,
   topic: string,
   tone: string = "professional"
 ): Promise<{ socialCaption: string; hashtags: string[]; blogDescription: string }> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: TEXT_MODEL });
-
   const prompt = `You are a social media content creator. Generate engaging post content for the following topic.
 
 Topic: ${topic}
@@ -190,10 +142,14 @@ Return ONLY valid JSON (no markdown, no code fences) in this exact shape:
   "blogDescription": "longer description suitable for LinkedIn or a blog post (max 500 chars)"
 }`;
 
-  const result = await model.generateContent(prompt);
-  const response = result.response;
-  const text = response.text();
+  const data = await callGeminiApi(apiKey, TEXT_MODEL, {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: "application/json"
+    }
+  });
 
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
   const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("Gemini did not return valid JSON for text content.");
   const parsed = JSON.parse(jsonMatch[0]);
@@ -205,8 +161,6 @@ Return ONLY valid JSON (no markdown, no code fences) in this exact shape:
   };
 }
 
-const VISION_MODEL = process.env.GEMINI_VISION_MODEL || "gemini-2.0-flash";
-
 /**
  * Analyze an image and return a text description.
  */
@@ -217,10 +171,7 @@ export async function describeImage(
   prompt: string,
   maxOutputTokens = 2048
 ): Promise<string> {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: VISION_MODEL });
-
-  const result = await model.generateContent({
+  const data = await callGeminiApi(apiKey, VISION_MODEL, {
     contents: [
       {
         role: "user",
@@ -235,6 +186,5 @@ export async function describeImage(
     },
   });
 
-  const response = result.response;
-  return response.text().trim();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "No text description generated.";
 }
