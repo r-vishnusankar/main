@@ -1,6 +1,6 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI, Part } from "@google/generative-ai";
 
-const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
+const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.0-flash";
 
 /**
  * Generate an image from a text prompt using Gemini image model.
@@ -8,25 +8,29 @@ const MODEL = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
  * Requires responseModalities: ["TEXT", "IMAGE"] so the API returns image output.
  */
 export async function generateImage(apiKey: string, prompt: string): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: prompt,
-    config: {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: MODEL });
+
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      // @ts-ignore - responseModalities is a newer field
       responseModalities: ["TEXT", "IMAGE"],
     },
   });
 
+  const response = result.response;
   const candidates = response.candidates;
+
   if (!candidates?.length) {
-    const feedback = (response as { promptFeedback?: { blockReason?: string } }).promptFeedback;
+    const feedback = (response as any).promptFeedback;
     const reason = feedback?.blockReason ? ` (${feedback.blockReason})` : "";
     throw new Error(`No response from Gemini${reason}. Check your API key and quota.`);
   }
 
   const parts = candidates[0].content?.parts ?? [];
   if (!parts.length) {
-    const finishReason = (candidates[0] as { finishReason?: string }).finishReason;
+    const finishReason = candidates[0].finishReason;
     throw new Error(
       `No content in response (${finishReason ?? "OTHER"}). ` +
         "The model may have blocked the output (e.g. safety or policy). Try a simpler, generic prompt and avoid brand/character names."
@@ -46,7 +50,6 @@ export async function generateImage(apiKey: string, prompt: string): Promise<str
 /**
  * Generate a banner from a product image + instructions (image editing).
  * Uses the uploaded image as the base. Requires responseModalities so the API returns an image.
- * Request format: single user Content with image part first, then text (recommended for image-in).
  */
 export async function generateImageFromImage(
   apiKey: string,
@@ -55,9 +58,10 @@ export async function generateImageFromImage(
   imageMimeType: string = "image/png",
   _aspectRatio?: string
 ): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: MODEL,
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: MODEL });
+
+  const result = await model.generateContent({
     contents: [
       {
         role: "user",
@@ -67,21 +71,24 @@ export async function generateImageFromImage(
         ],
       },
     ],
-    config: {
+    generationConfig: {
+      // @ts-ignore
       responseModalities: ["TEXT", "IMAGE"],
     },
   });
 
+  const response = result.response;
   const candidates = response.candidates;
+
   if (!candidates?.length) {
-    const feedback = (response as { promptFeedback?: { blockReason?: string } }).promptFeedback;
+    const feedback = (response as any).promptFeedback;
     const reason = feedback?.blockReason ? ` (${feedback.blockReason})` : "";
     throw new Error(`No response from Gemini${reason}. Check your API key and quota.`);
   }
 
   const parts = candidates[0].content?.parts ?? [];
   if (!parts.length) {
-    const finishReason = (candidates[0] as { finishReason?: string }).finishReason;
+    const finishReason = candidates[0].finishReason;
     throw new Error(
       `No content in response (${finishReason ?? "OTHER"}). ` +
         "The model may have blocked the output. Try a simpler prompt or a different product image."
@@ -100,7 +107,6 @@ export async function generateImageFromImage(
 
 /**
  * Generate an image from multiple reference images + prompt (multi-image composition/blending).
- * Uses Gemini 2.5 Flash Image multi-image support. All images are sent as parts before the text prompt.
  */
 export async function generateImageFromMultipleImages(
   apiKey: string,
@@ -111,33 +117,38 @@ export async function generateImageFromMultipleImages(
   if (!images?.length) {
     throw new Error("At least one image is required for multi-image generation");
   }
-  const ai = new GoogleGenAI({ apiKey });
-  const imageParts = images.map((img) => ({
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: MODEL });
+
+  const imageParts: Part[] = images.map((img) => ({
     inlineData: { mimeType: img.mimeType, data: img.base64 },
   }));
-  const response = await ai.models.generateContent({
-    model: MODEL,
+
+  const result = await model.generateContent({
     contents: [
       {
         role: "user",
         parts: [...imageParts, { text: prompt }],
       },
     ],
-    config: {
+    generationConfig: {
+      // @ts-ignore
       responseModalities: ["TEXT", "IMAGE"],
     },
   });
 
+  const response = result.response;
   const candidates = response.candidates;
+
   if (!candidates?.length) {
-    const feedback = (response as { promptFeedback?: { blockReason?: string } }).promptFeedback;
+    const feedback = (response as any).promptFeedback;
     const reason = feedback?.blockReason ? ` (${feedback.blockReason})` : "";
     throw new Error(`No response from Gemini${reason}. Check your API key and quota.`);
   }
 
   const parts = candidates[0].content?.parts ?? [];
   if (!parts.length) {
-    const finishReason = (candidates[0] as { finishReason?: string }).finishReason;
+    const finishReason = candidates[0].finishReason;
     throw new Error(
       `No content in response (${finishReason ?? "OTHER"}). ` +
         "The model may have blocked the output. Try a simpler prompt or different reference images."
@@ -158,14 +169,15 @@ const TEXT_MODEL = process.env.GEMINI_TEXT_MODEL || "gemini-2.0-flash";
 
 /**
  * Generate social media text content from a topic string (no image required).
- * Returns a structured post object with caption, hashtags, and a longer description.
  */
 export async function generatePostText(
   apiKey: string,
   topic: string,
   tone: string = "professional"
 ): Promise<{ socialCaption: string; hashtags: string[]; blogDescription: string }> {
-  const ai = new GoogleGenAI({ apiKey });
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: TEXT_MODEL });
+
   const prompt = `You are a social media content creator. Generate engaging post content for the following topic.
 
 Topic: ${topic}
@@ -178,24 +190,14 @@ Return ONLY valid JSON (no markdown, no code fences) in this exact shape:
   "blogDescription": "longer description suitable for LinkedIn or a blog post (max 500 chars)"
 }`;
 
-  const response = await ai.models.generateContent({
-    model: TEXT_MODEL,
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-  });
+  const result = await model.generateContent(prompt);
+  const response = result.response;
+  const text = response.text();
 
-  const candidates = response.candidates;
-  if (!candidates?.length) {
-    throw new Error("No response from Gemini. Check your API key and quota.");
-  }
-
-  const parts = candidates[0].content?.parts ?? [];
-  const textPart = parts.find(
-    (p): p is { text: string } => "text" in p && typeof (p as { text?: string }).text === "string"
-  );
-  const raw = textPart?.text ?? "";
-  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error("Gemini did not return valid JSON for text content.");
   const parsed = JSON.parse(jsonMatch[0]);
+
   return {
     socialCaption: parsed.socialCaption ?? "",
     hashtags: Array.isArray(parsed.hashtags) ? parsed.hashtags : [],
@@ -206,10 +208,7 @@ Return ONLY valid JSON (no markdown, no code fences) in this exact shape:
 const VISION_MODEL = process.env.GEMINI_VISION_MODEL || "gemini-2.0-flash";
 
 /**
- * Analyze an image and return a text description (vision: image in, text out).
- * Used for generating social captions, alt text, and blog descriptions.
- * Does not use responseModalities; default text-only response.
- * @param maxOutputTokens - Optional. Increase for longer outputs (e.g. blog body). Default 2048.
+ * Analyze an image and return a text description.
  */
 export async function describeImage(
   apiKey: string,
@@ -218,9 +217,10 @@ export async function describeImage(
   prompt: string,
   maxOutputTokens = 2048
 ): Promise<string> {
-  const ai = new GoogleGenAI({ apiKey });
-  const response = await ai.models.generateContent({
-    model: VISION_MODEL,
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: VISION_MODEL });
+
+  const result = await model.generateContent({
     contents: [
       {
         role: "user",
@@ -230,29 +230,11 @@ export async function describeImage(
         ],
       },
     ],
-    config: {
+    generationConfig: {
       maxOutputTokens,
     },
   });
 
-  const candidates = response.candidates;
-  if (!candidates?.length) {
-    const feedback = (response as { promptFeedback?: { blockReason?: string } }).promptFeedback;
-    const reason = feedback?.blockReason ? ` (${feedback.blockReason})` : "";
-    throw new Error(`No response from Gemini${reason}. Check your API key and quota.`);
-  }
-
-  const parts = candidates[0].content?.parts ?? [];
-  const textPart = parts.find((p): p is { text: string } => "text" in p && typeof (p as { text?: string }).text === "string");
-  if (textPart?.text) {
-    return textPart.text.trim();
-  }
-
-  const responseText = (response as { text?: () => string }).text;
-  if (typeof responseText === "function") {
-    const out = responseText.call(response);
-    if (out && typeof out === "string") return out.trim();
-  }
-
-  throw new Error("No text in response");
+  const response = result.response;
+  return response.text().trim();
 }
