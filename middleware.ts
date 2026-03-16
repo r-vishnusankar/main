@@ -1,13 +1,16 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
+// import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
+/*
 const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
   '/api/generate-image(.*)'
 ])
+*/
 
 // Edge runtime only has NEXT_PUBLIC_* vars; use both for flexibility
-const bypassAuth = process.env.DISABLE_AUTH === 'true' || process.env.NEXT_PUBLIC_DISABLE_AUTH === 'true'
+const bypassAuth = true // process.env.DISABLE_AUTH === 'true' || process.env.NEXT_PUBLIC_DISABLE_AUTH === 'true'
 
 // Allowed origins for CORS when frontend (Netlify) and backend (Render) are split
 const corsOrigins = (process.env.CORS_ORIGINS ?? process.env.NEXT_PUBLIC_APP_URL ?? '')
@@ -25,6 +28,22 @@ function addCorsHeaders(res: NextResponse, origin: string | null): NextResponse 
   return res
 }
 
+export default async function middleware(req: NextRequest) {
+  if (corsOrigins.length > 0 && req.nextUrl.pathname.startsWith('/api/')) {
+    const origin = req.headers.get('origin')
+    if (req.method === 'OPTIONS') {
+      const res = new NextResponse(null, { status: 204 })
+      addCorsHeaders(res, origin)
+      res.headers.set('Access-Control-Max-Age', '86400')
+      return res
+    }
+  }
+
+  // Auth bypass for now
+  return NextResponse.next()
+}
+
+/*
 export default clerkMiddleware(async (auth, req) => {
   if (corsOrigins.length > 0 && req.nextUrl.pathname.startsWith('/api/')) {
     const origin = req.headers.get('origin')
@@ -41,6 +60,7 @@ export default clerkMiddleware(async (auth, req) => {
     await auth.protect()
   }
 })
+*/
 
 export const config = {
   matcher: [

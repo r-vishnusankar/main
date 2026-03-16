@@ -3,7 +3,7 @@
 import Link from "next/link";
 import HeroSection from "@/components/ui/hero-section-2";
 import PreviewImage from "@/components/PreviewImage";
-import { Show, UserButton, SignInButton, SignUpButton } from "@clerk/nextjs";
+// import { Show, UserButton, SignInButton, SignUpButton } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 
 /* ── Icons ── */
@@ -141,7 +141,7 @@ export default function MarketingPage() {
 
   const authSlot = (
     <div className="flex items-center gap-4">
-      <Show when="signed-out">
+      {/* <Show when="signed-out">
         <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
           <button className="text-[13px] font-medium text-white/70 hover:text-white transition-colors">Log in</button>
         </SignInButton>
@@ -152,7 +152,10 @@ export default function MarketingPage() {
       <Show when="signed-in">
         <button onClick={() => router.push("/dashboard")} className="border border-white/60 rounded-full px-6 py-2 text-[13px] font-bold hover:bg-white hover:text-black transition-colors">Open App</button>
         <UserButton />
-      </Show>
+      </Show> */}
+      <button onClick={() => router.push("/dashboard")} className="border border-white/60 rounded-full px-6 py-2 text-[13px] font-bold hover:bg-white hover:text-black transition-colors">
+        Open App
+      </button>
     </div>
   );
 
@@ -389,12 +392,15 @@ export default function MarketingPage() {
             <h2 className="text-[24px] sm:text-[32px] font-black text-white mb-3 tracking-tight">Ready to transform your content workflow?</h2>
             <p className="text-gray-400 text-[15px] mb-8 max-w-lg mx-auto">Join e-commerce teams using Pixmerce.ai to create, schedule, and publish high-converting content in seconds.</p>
             <div className="flex flex-wrap justify-center gap-4">
-              <SignUpButton mode="modal" fallbackRedirectUrl="/dashboard">
-                <button className="btn-primary text-[15px] px-8 py-3.5 flex items-center gap-2">
+              {/* <SignUpButton mode="modal" fallbackRedirectUrl="/dashboard"> */}
+                <button 
+                  onClick={() => router.push("/dashboard")}
+                  className="btn-primary text-[15px] px-8 py-3.5 flex items-center gap-2"
+                >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
                   Start Creating Now
                 </button>
-              </SignUpButton>
+              {/* </SignUpButton> */}
               <Link href="/dashboard?view=templates" className="btn-secondary text-[15px] px-8 py-3.5">Explore Templates</Link>
             </div>
           </div>

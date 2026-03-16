@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { ActivityDropdown } from "@/components/ui/activity-dropdown";
-import { Show, UserButton, SignInButton, useUser } from "@clerk/nextjs";
+// import { Show, UserButton, SignInButton, useUser } from "@clerk/nextjs";
 import { apiFetch } from "@/lib/api";
 
 interface TopNavProps {
@@ -24,7 +24,8 @@ export default function TopNav({ onToggleRecent, recentOpen, onOpenCreate }: Top
   const [activityOpen, setActivityOpen] = useState(false);
   const activityRef = useRef<HTMLDivElement>(null);
   const [credits, setCredits] = useState<number | null>(null);
-  const { isLoaded, isSignedIn } = useUser();
+  const isLoaded = true; // const { isLoaded, isSignedIn } = useUser();
+  const isSignedIn = true;
 
   useEffect(() => {
     if (!isPureHome && isLoaded && isSignedIn) {
@@ -32,7 +33,8 @@ export default function TopNav({ onToggleRecent, recentOpen, onOpenCreate }: Top
         .then(res => res.json())
         .then(data => {
           if (typeof data.credits === "number") setCredits(data.credits);
-        });
+        })
+        .catch(() => {});
     }
   }, [isPureHome, isLoaded, isSignedIn]);
 
@@ -167,16 +169,19 @@ export default function TopNav({ onToggleRecent, recentOpen, onOpenCreate }: Top
           {credits !== null ? <span className="font-bold">{credits} Credits</span> : "Upgrade"}
         </button>
 
-        {/* Avatar */}
+        {/* Avatar Placeholder */}
         <div className="ml-2 flex flex-shrink-0 items-center">
-          <Show when="signed-in">
+          <div className="w-8 h-8 rounded-full bg-white/[0.1] border border-white/[0.2] flex items-center justify-center text-[10px] text-gray-300 font-bold uppercase">
+            User
+          </div>
+          {/* <Show when="signed-in">
             <UserButton />
           </Show>
           <Show when="signed-out">
             <SignInButton mode="modal" fallbackRedirectUrl="/dashboard">
               <button className="text-[14px] font-medium text-gray-300 hover:text-white transition-colors">Log In</button>
             </SignInButton>
-          </Show>
+          </Show> */}
         </div>
       </div>
     </header>

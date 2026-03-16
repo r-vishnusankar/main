@@ -1,1 +1,42 @@
-{}
+{
+  "job-1773410439520-bmy6ocu": {
+    "id": "job-1773410439520-bmy6ocu",
+    "type": "auto_generate",
+    "imagePrompt": "motivtional quotes for today",
+    "autoGenerateType": "image_caption",
+    "aspectRatio": "1:1",
+    "tone": "professional",
+    "platforms": [
+      "instagram"
+    ],
+    "scheduledAt": "2026-03-13T14:01:00.000Z",
+    "createdAt": "2026-03-13T14:00:39.520Z",
+    "retryCount": 2
+  },
+  "job-1773676211513-00te8fa": {
+    "id": "job-1773676211513-00te8fa",
+    "type": "auto_generate",
+    "imagePrompt": "motivation quote gym",
+    "autoGenerateType": "image_caption",
+    "aspectRatio": "1:1",
+    "tone": "informative",
+    "platforms": [
+      "instagram"
+    ],
+    "scheduledAt": "2026-03-16T15:52:00.000Z",
+    "createdAt": "2026-03-16T15:50:11.513Z"
+  },
+  "job-1773676255727-crd9yj9": {
+    "id": "job-1773676255727-crd9yj9",
+    "type": "auto_generate",
+    "imagePrompt": "image for motivation",
+    "autoGenerateType": "image_caption",
+    "aspectRatio": "9:16",
+    "tone": "professional",
+    "platforms": [
+      "facebook"
+    ],
+    "scheduledAt": "2026-03-16T15:52:00.000Z",
+    "createdAt": "2026-03-16T15:50:55.727Z"
+  }
+}
