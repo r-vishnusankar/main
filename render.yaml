@@ -71,7 +71,7 @@ services:
   - type: cron
     name: pixmerce-publish-cron
     runtime: node
-    schedule: "*/2 * * * *"
+    schedule: "0 19 * * *"
     buildCommand: echo "no build needed"
     startCommand: >-
       curl -s -X GET
