@@ -34,8 +34,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized. Please log in." }, { status: 401 });
     }
 
+    console.log(`[generate-image] Starting request for userId: ${userId}`);
+    
     // Attempt to sync user from Clerk to local DB if they don't exist
-    let user = await prisma.user.findUnique({ where: { id: userId } });
+    let user;
+    try {
+      user = await prisma.user.findUnique({ where: { id: userId } });
+      console.log(`[generate-image] User lookup successful: ${!!user}`);
+    } catch (dbErr: any) {
+      console.error("[generate-image] Database connection error:", dbErr.message);
+      return NextResponse.json({ error: "Database connection failed. Please check your Neon DB connection string." }, { status: 503 });
+    }
     if (!user) {
       // const cUser = await currentUser();
       const email = `user@pixmerce.ai`; // cUser?.emailAddresses[0]?.emailAddress || `${userId}@placeholder.com`;
@@ -119,7 +128,9 @@ export async function POST(request: NextRequest) {
       return await generateImage(apiKey, usePrompt);
     };
 
+    console.log(`[generate-image] Calling Gemini for prompt: "${prompt.substring(0, 50)}..."`);
     imageUrl = await tryGenerate(prompt);
+    console.log(`[generate-image] Gemini returned image. Length: ${imageUrl.length}`);
     const validation = validateGeneratedImage(imageUrl);
     if (!validation.ok) {
       imageUrl = await tryGenerate(retryPrompt(aspect));
@@ -137,6 +148,7 @@ export async function POST(request: NextRequest) {
       if (enhanced) imageUrl = enhanced;
     }
 
+    console.log("[generate-image] Deducting credits and saving to DB...");
     // Deduct 1 credit & save image record
     await prisma.$transaction([
       prisma.user.update({
@@ -151,6 +163,7 @@ export async function POST(request: NextRequest) {
         },
       }),
     ]);
+    console.log("[generate-image] Transaction complete.");
 
     return NextResponse.json({ imageUrl, status: "success", textOnlyFallback, creditsRemaining: user.credits - 1 });
   } catch (err) {
