@@ -4,8 +4,6 @@
 
 [functions]
   directory = "netlify/functions"
-  timeout = 26
-  node_bundler = "esbuild"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
