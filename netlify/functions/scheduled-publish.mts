@@ -9,6 +9,11 @@
 import type { Config } from "@netlify/functions";
 
 export default async function handler() {
+  if (process.env.DISABLE_SCHEDULER === "true") {
+    console.log("[scheduled-publish] Scheduler is disabled via environment variable.");
+    return;
+  }
+
   const siteUrl =
     process.env.URL ||              // Netlify production URL (auto-set)
     process.env.DEPLOY_URL ||       // Netlify deploy preview URL
@@ -31,13 +36,21 @@ export default async function handler() {
       },
     });
 
-    const data = await res.json();
-    console.log(`[scheduled-publish] Cron ran: ${JSON.stringify(data)}`);
-  } catch (err) {
-    console.error("[scheduled-publish] Failed to call cron endpoint:", err);
+    const text = await res.text();
+    console.log(`[scheduled-publish] Response Status: ${res.status}`);
+    
+    try {
+      const data = JSON.parse(text);
+      console.log(`[scheduled-publish] Cron ran successfully: ${JSON.stringify(data)}`);
+    } catch (parseErr: any) {
+      console.error(`[scheduled-publish] Failed to parse JSON. Response (first 200 chars): ${text.substring(0, 200)}`);
+      throw new Error(`Invalid JSON response: ${parseErr.message}`);
+    }
+  } catch (err: any) {
+    console.error("[scheduled-publish] Error executing cron:", err.message);
   }
 }
 
 export const config: Config = {
-  schedule: "*/15 * * * *",
+  schedule: "*/2 * * * *",
 };
